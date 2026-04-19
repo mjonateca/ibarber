@@ -1,0 +1,49 @@
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO, demoShop, demoBarbers, demoServices } from "@/lib/demo-data";
+import type { Metadata } from "next";
+import ShopPublicView from "./shop-public-view";
+
+interface Props {
+  params: Promise<{ slug: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  if (IS_DEMO) return { title: `${demoShop.name} — Demo` };
+
+  const supabase = await createClient();
+  const { data: shop } = await supabase
+    .from("shops").select("name, address").eq("slug", slug).single();
+
+  if (!shop) return { title: "Barbería no encontrada" };
+  return {
+    title: shop.name,
+    description: `Reserva tu cita en ${shop.name}${shop.address ? ` · ${shop.address}` : ""}`,
+  };
+}
+
+export default async function ShopPage({ params }: Props) {
+  const { slug } = await params;
+
+  if (IS_DEMO) {
+    const shop = {
+      ...demoShop,
+      slug,
+      barbers: demoBarbers.map((b) => ({ ...b, barber_services: [] })),
+      services: demoServices,
+    };
+    return <ShopPublicView shop={shop as Parameters<typeof ShopPublicView>[0]["shop"]} />;
+  }
+
+  const supabase = await createClient();
+  const { data: shop } = await supabase
+    .from("shops")
+    .select("*, barbers(*, barber_services(service_id)), services(*)")
+    .eq("slug", slug)
+    .eq("services.is_active", true)
+    .single();
+
+  if (!shop) notFound();
+  return <ShopPublicView shop={shop} />;
+}
