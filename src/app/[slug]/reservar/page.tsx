@@ -1,6 +1,8 @@
-import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { notFound, redirect } from "next/navigation";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { IS_DEMO, demoShop, demoBarbers, demoServices, demoClient } from "@/lib/demo-data";
+import type { AccountRole } from "@/types/database";
+import BookingRoleNotice from "./booking-role-notice";
 import BookingFlow from "./booking-flow";
 
 interface Props {
@@ -13,6 +15,7 @@ export const metadata = { title: "Reservar cita" };
 export default async function ReservarPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { barber: preselectedBarber } = await searchParams;
+  const bookingPath = `/${slug}/reservar${preselectedBarber ? `?barber=${preselectedBarber}` : ""}`;
 
   if (IS_DEMO) {
     const shop = {
@@ -42,23 +45,56 @@ export default async function ReservarPage({ params, searchParams }: Props) {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    const { redirect } = await import("next/navigation");
-    redirect(`/login?redirect=/${slug}/reservar${preselectedBarber ? `?barber=${preselectedBarber}` : ""}`);
+    redirect(`/login?redirect=${encodeURIComponent(bookingPath)}`);
   }
 
-  let { data: client } = await supabase
-    .from("clients").select("*").eq("user_id", user!.id).single();
+  const admin = await createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("role, first_name, last_name, phone, country_code, country_name, city")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "client") {
+    return (
+      <BookingRoleNotice
+        role={(profile?.role as AccountRole | undefined) || "shop_owner"}
+        shopSlug={slug}
+      />
+    );
+  }
+
+  let { data: client } = await admin
+    .from("clients")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   if (!client) {
-    const { data: newClient } = await supabase
+    const fullName =
+      `${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
+      user.user_metadata?.full_name ||
+      user.email ||
+      "Cliente";
+
+    const { data: newClient } = await admin
       .from("clients")
-      .insert({ user_id: user!.id, name: user!.user_metadata?.full_name || user!.email || "Cliente" })
+      .insert({
+        user_id: user.id,
+        name: fullName,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        phone: profile.phone,
+        whatsapp: profile.phone,
+        country_code: profile.country_code,
+        country_name: profile.country_name,
+        city: profile.city,
+      })
       .select().single();
     client = newClient;
   }
 
   if (!client) {
-    const { redirect } = await import("next/navigation");
     redirect("/login");
   }
 

@@ -7,7 +7,7 @@ import { MapPin, Phone, Star, Clock, Scissors } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { Shop, Barber, Service } from "@/types/database";
+import type { AccountRole, Shop, Barber, Service } from "@/types/database";
 
 interface BarberWithServices extends Barber {
   barber_services: Array<{ service_id: string }>;
@@ -20,13 +20,17 @@ interface ShopWithRelations extends Shop {
 
 interface Props {
   shop: ShopWithRelations;
+  viewerRole?: AccountRole | null;
 }
 
-export default function ShopPublicView({ shop }: Props) {
+export default function ShopPublicView({ shop, viewerRole }: Props) {
   const [selectedBarber, setSelectedBarber] = useState<string | null>(null);
 
-  const activeServices = shop.services.filter((s) => s.is_active);
-  const activeBarbers = shop.barbers;
+  const activeServices = shop.services.filter((s) => s.is_active && s.is_visible !== false);
+  const activeBarbers = shop.barbers.filter((barber) => barber.is_active !== false);
+  const selectedBarberData = selectedBarber
+    ? activeBarbers.find((barber) => barber.id === selectedBarber) || null
+    : null;
 
   function getBarberServices(barber: BarberWithServices): Service[] {
     const serviceIds = new Set(barber.barber_services.map((bs) => bs.service_id));
@@ -35,10 +39,19 @@ export default function ShopPublicView({ shop }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[hsl(var(--muted))]">
       {/* Header de la barbería */}
-      <div className="bg-gradient-to-b from-zinc-900 to-zinc-800 text-white">
-        <div className="max-w-lg mx-auto px-4 pt-10 pb-8">
+      <div className="relative overflow-hidden bg-[hsl(var(--foreground))] text-white">
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=1200&q=80')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div className="relative mx-auto max-w-3xl px-4 pb-9 pt-10">
           <div className="flex items-start gap-4">
             {shop.logo_url ? (
               <Image
@@ -46,10 +59,10 @@ export default function ShopPublicView({ shop }: Props) {
                 alt={shop.name}
                 width={72}
                 height={72}
-                className="rounded-2xl object-cover"
+                className="rounded-lg object-cover"
               />
             ) : (
-              <div className="w-18 h-18 rounded-2xl bg-primary/20 flex items-center justify-center">
+              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-lg bg-white/12">
                 <Scissors className="h-8 w-8 text-primary" />
               </div>
             )}
@@ -72,7 +85,7 @@ export default function ShopPublicView({ shop }: Props) {
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-8">
+      <div className="mx-auto max-w-3xl px-4 py-6 space-y-8">
         {/* Barberos */}
         {activeBarbers.length > 0 && (
           <section>
@@ -86,13 +99,13 @@ export default function ShopPublicView({ shop }: Props) {
                       selectedBarber === barber.id ? null : barber.id
                     )
                   }
-                  className={`rounded-2xl border p-4 text-left transition-all ${
+                  className={`rounded-lg border bg-background p-4 text-left transition-all ${
                     selectedBarber === barber.id
                       ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : "border-border hover:border-primary/40"
                   }`}
                 >
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mb-3 overflow-hidden">
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mb-3 overflow-hidden">
                     {barber.avatar_url ? (
                       <Image
                         src={barber.avatar_url}
@@ -110,6 +123,9 @@ export default function ShopPublicView({ shop }: Props) {
                   <p className="font-medium text-sm leading-tight">
                     {barber.display_name}
                   </p>
+                  {barber.specialty && (
+                    <p className="mt-1 text-xs text-primary">{barber.specialty}</p>
+                  )}
                   {barber.rating > 0 && (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                       <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
@@ -126,16 +142,19 @@ export default function ShopPublicView({ shop }: Props) {
         <section>
           <h2 className="text-lg font-semibold mb-4">Servicios</h2>
           <div className="space-y-2">
-            {(selectedBarber
-              ? getBarberServices(
-                  activeBarbers.find((b) => b.id === selectedBarber)!
-                )
+            {(selectedBarberData
+              ? getBarberServices(selectedBarberData)
               : activeServices
             ).map((service) => (
-              <Card key={service.id} className="shadow-none">
+              <Card key={service.id} className="border-none shadow-none">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     <p className="font-medium">{service.name}</p>
+                    {service.description && (
+                      <p className="mt-1 max-w-md text-xs text-muted-foreground line-clamp-2">
+                        {service.description}
+                      </p>
+                    )}
                     <p className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
                       <Clock className="h-3.5 w-3.5" />
                       {service.duration_min} min
@@ -149,22 +168,36 @@ export default function ShopPublicView({ shop }: Props) {
                 </CardContent>
               </Card>
             ))}
+            {activeServices.length === 0 && (
+              <Card className="border-none shadow-none">
+                <CardContent className="p-4 text-sm text-muted-foreground">
+                  Esta barbería aún no tiene servicios activos.
+                </CardContent>
+              </Card>
+            )}
           </div>
         </section>
 
         {/* CTA Reservar */}
         <div className="pb-8">
-          <Link
-            href={
-              selectedBarber
-                ? `/${shop.slug}/reservar?barber=${selectedBarber}`
-                : `/${shop.slug}/reservar`
-            }
-          >
-            <Button size="lg" className="w-full text-base h-14 rounded-2xl shadow-lg">
+          <Button asChild size="lg" className="w-full text-base h-14 shadow-lg">
+            <Link
+              href={
+                selectedBarber
+                  ? `/${shop.slug}/reservar?barber=${selectedBarber}`
+                  : `/${shop.slug}/reservar`
+              }
+            >
               {selectedBarber ? "Reservar con este barbero" : "Reservar cita"}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
+
+          {viewerRole && viewerRole !== "client" && (
+            <p className="mt-3 rounded-lg border bg-background p-3 text-center text-xs text-muted-foreground">
+              Estás viendo esta página como {viewerRole === "barber" ? "barbero" : "barbería"}.
+              Para reservar, usa una cuenta cliente.
+            </p>
+          )}
 
           {shop.deposit_required && shop.deposit_amount > 0 && (
             <p className="text-xs text-center text-muted-foreground mt-3">
@@ -175,7 +208,7 @@ export default function ShopPublicView({ shop }: Props) {
       </div>
 
       {/* Footer */}
-      <footer className="border-t py-4 text-center text-xs text-muted-foreground">
+      <footer className="border-t bg-background py-4 text-center text-xs text-muted-foreground">
         Powered by{" "}
         <Link href="/" className="text-primary font-medium">
           iBarber

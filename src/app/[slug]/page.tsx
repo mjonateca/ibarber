@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DEMO, demoShop, demoBarbers, demoServices } from "@/lib/demo-data";
 import type { Metadata } from "next";
+import type { AccountRole } from "@/types/database";
 import ShopPublicView from "./shop-public-view";
 
 interface Props {
@@ -37,13 +38,27 @@ export default async function ShopPage({ params }: Props) {
   }
 
   const supabase = await createClient();
-  const { data: shop } = await supabase
-    .from("shops")
-    .select("*, barbers(*, barber_services(service_id)), services(*)")
-    .eq("slug", slug)
-    .eq("services.is_active", true)
-    .single();
+  const [{ data: shop }, { data: auth }] = await Promise.all([
+    supabase
+      .from("shops")
+      .select("*, barbers(*, barber_services(service_id)), services(*)")
+      .eq("slug", slug)
+      .eq("services.is_active", true)
+      .single(),
+    supabase.auth.getUser(),
+  ]);
 
   if (!shop) notFound();
-  return <ShopPublicView shop={shop} />;
+
+  let viewerRole: AccountRole | null = null;
+  if (auth.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    viewerRole = (profile?.role as AccountRole | undefined) || null;
+  }
+
+  return <ShopPublicView shop={shop} viewerRole={viewerRole} />;
 }

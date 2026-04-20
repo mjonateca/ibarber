@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthenticatedContext } from "@/lib/server-authz";
+import { createAdminClient } from "@/lib/supabase/server";
 
 const updateSchema = z.object({
   display_name: z.string().min(2).optional(),
@@ -43,9 +44,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const context = await assertBarberOwner(id);
   if (context.response) return context.response;
+  const admin = await createAdminClient();
 
   const { service_ids, ...patch } = parsed.data;
-  const { data, error } = await context.supabase
+  const { data, error } = await admin
     .from("barbers")
     .update(patch)
     .eq("id", id)
@@ -55,9 +57,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (service_ids) {
-    await context.supabase.from("barber_services").delete().eq("barber_id", id);
+    await admin.from("barber_services").delete().eq("barber_id", id);
     if (service_ids.length) {
-      await context.supabase.from("barber_services").insert(
+      await admin.from("barber_services").insert(
         service_ids.map((service_id) => ({ barber_id: id, service_id }))
       );
     }
@@ -70,8 +72,9 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const context = await assertBarberOwner(id);
   if (context.response) return context.response;
+  const admin = await createAdminClient();
 
-  const { error } = await context.supabase.from("barbers").update({ is_active: false }).eq("id", id);
+  const { error } = await admin.from("barbers").update({ is_active: false }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

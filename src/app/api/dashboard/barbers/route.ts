@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOwnedShop } from "@/lib/server-authz";
+import { createAdminClient } from "@/lib/supabase/server";
 
 const barberSchema = z.object({
   shop_id: z.string().uuid().optional(),
@@ -34,8 +35,9 @@ export async function POST(request: Request) {
 
   const context = await requireOwnedShop(parsed.data.shop_id);
   if (context.response) return context.response;
+  const admin = await createAdminClient();
 
-  let { data: barber, error } = await context.supabase
+  let { data: barber, error } = await admin
     .from("barbers")
     .insert({
       user_id: context.user.id,
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
     .single();
 
   if (error && /specialty|is_active/.test(error.message)) {
-    const fallback = await context.supabase
+    const fallback = await admin
       .from("barbers")
       .insert({
         user_id: context.user.id,
@@ -70,7 +72,7 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (parsed.data.service_ids?.length) {
-    await context.supabase.from("barber_services").insert(
+    await admin.from("barber_services").insert(
       parsed.data.service_ids.map((service_id) => ({
         barber_id: barber.id,
         service_id,

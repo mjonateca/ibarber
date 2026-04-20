@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
 const createBookingSchema = z.object({
@@ -18,18 +18,31 @@ function timeToMinutes(value: string) {
 
 export async function POST(request: Request) {
   const supabase = await createClient();
+  const admin = await createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  // Obtener perfil de cliente
-  const { data: client } = await supabase
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "client") {
+    return NextResponse.json(
+      { error: "Solo una cuenta cliente puede crear reservas" },
+      { status: 403 }
+    );
+  }
+
+  const { data: client } = await admin
     .from("clients")
     .select("id")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (!client) {
     return NextResponse.json({ error: "Perfil de cliente no encontrado" }, { status: 404 });
@@ -45,13 +58,50 @@ export async function POST(request: Request) {
     );
   }
 
-  // Verificar disponibilidad
-  const { data: compatible } = await supabase
+  const [{ data: shop }, { data: barber }, { data: service }] = await Promise.all([
+    admin
+      .from("shops")
+      .select("id, is_active")
+      .eq("id", parsed.data.shop_id)
+      .maybeSingle(),
+    admin
+      .from("barbers")
+      .select("id, shop_id, is_active")
+      .eq("id", parsed.data.barber_id)
+      .maybeSingle(),
+    admin
+      .from("services")
+      .select("id, shop_id, is_active, is_visible")
+      .eq("id", parsed.data.service_id)
+      .maybeSingle(),
+  ]);
+
+  if (!shop?.is_active) {
+    return NextResponse.json({ error: "Barbería no disponible" }, { status: 404 });
+  }
+
+  if (!barber?.is_active || barber.shop_id !== parsed.data.shop_id) {
+    return NextResponse.json(
+      { error: "Barbero no disponible en esta barbería" },
+      { status: 409 }
+    );
+  }
+
+  if (!service?.is_active || service.is_visible === false || service.shop_id !== parsed.data.shop_id) {
+    return NextResponse.json(
+      { error: "Servicio no disponible en esta barbería" },
+      { status: 409 }
+    );
+  }
+
+  const { data: assignedServices } = await admin
     .from("barber_services")
-    .select("barber_id")
-    .eq("barber_id", parsed.data.barber_id)
-    .eq("service_id", parsed.data.service_id)
-    .single();
+    .select("service_id")
+    .eq("barber_id", parsed.data.barber_id);
+
+  const hasExplicitAssignments = Boolean(assignedServices?.length);
+  const compatible = !hasExplicitAssignments ||
+    assignedServices?.some((item) => item.service_id === parsed.data.service_id);
 
   if (!compatible) {
     return NextResponse.json(
@@ -64,16 +114,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Horario inválido" }, { status: 400 });
   }
 
-  const { data: conflict } = await supabase
+  const { data: conflict } = await admin
     .from("bookings")
     .select("id")
     .eq("barber_id", parsed.data.barber_id)
     .eq("date", parsed.data.date)
     .not("status", "in", '("cancelled","no_show")')
-    .or(
-      `and(start_time.lte.${parsed.data.end_time},end_time.gt.${parsed.data.start_time})`
-    )
-    .single();
+    .or(`and(start_time.lt.${parsed.data.end_time},end_time.gt.${parsed.data.start_time})`)
+    .limit(1)
+    .maybeSingle();
 
   if (conflict) {
     return NextResponse.json(
@@ -82,7 +131,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: booking, error } = await supabase
+  const { data: booking, error } = await admin
     .from("bookings")
     .insert({
       client_id: client.id,
@@ -95,7 +144,10 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error.message.includes("no_overlap")
+      ? "El horario ya no está disponible"
+      : error.message;
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json(booking, { status: 201 });

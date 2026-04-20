@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { format, addDays, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, Loader2, Scissors, UserRound } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +24,7 @@ interface Props {
 }
 
 type Step = "barber" | "service" | "datetime" | "confirm" | "success";
+type BookedInterval = { start: string; end: string };
 
 const TIME_SLOTS = [
   "09:00","09:30","10:00","10:30","11:00","11:30",
@@ -33,20 +33,33 @@ const TIME_SLOTS = [
 ];
 
 function generateDates(days = 14): Date[] {
-  return Array.from({ length: days }, (_, i) => addDays(startOfDay(new Date()), i + 1));
+  return Array.from({ length: days }, (_, i) => addDays(startOfDay(new Date()), i));
 }
 
-export default function BookingFlow({ shop, preselectedBarberId }: Props) {
-  const [step, setStep] = useState<Step>(preselectedBarberId ? "service" : "barber");
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function intervalsOverlap(start: string, end: string, booked: BookedInterval) {
+  return timeToMinutes(start) < timeToMinutes(booked.end) &&
+    timeToMinutes(end) > timeToMinutes(booked.start);
+}
+
+export default function BookingFlow({ shop, client, preselectedBarberId }: Props) {
+  const activeBarbers = shop.barbers.filter((barber) => barber.is_active !== false);
+  const preselectedBarber = preselectedBarberId
+    ? activeBarbers.find((barber) => barber.id === preselectedBarberId) || null
+    : null;
+
+  const [step, setStep] = useState<Step>(preselectedBarber ? "service" : "barber");
   const [selectedBarber, setSelectedBarber] = useState<ShopWithRelations["barbers"][number] | null>(
-    preselectedBarberId
-      ? shop.barbers.find((b) => b.id === preselectedBarberId) || null
-      : null
+    preselectedBarber
   );
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<BookedInterval[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,18 +76,15 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
 
   async function loadBookedSlots(barberId: string, date: Date) {
     setLoadingSlots(true);
-    const supabase = createClient();
     const dateStr = format(date, "yyyy-MM-dd");
 
-    const { data } = await supabase
-      .from("bookings")
-      .select("start_time")
-      .eq("barber_id", barberId)
-      .eq("date", dateStr)
-      .not("status", "in", '("cancelled","no_show")');
-
-    setBookedSlots((data || []).map((b) => b.start_time.slice(0, 5)));
-    setLoadingSlots(false);
+    try {
+      const response = await fetch(`/api/availability?barber_id=${barberId}&date=${dateStr}`);
+      const payload = await response.json();
+      setBookedSlots(response.ok ? payload.intervals || [] : []);
+    } finally {
+      setLoadingSlots(false);
+    }
   }
 
   async function handleDateSelect(date: Date) {
@@ -104,40 +114,51 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
     const endM = (h * 60 + m + selectedService.duration_min) % 60;
     const endTime = `${endH.toString().padStart(2, "0")}:${endM.toString().padStart(2, "0")}`;
 
-    const response = await fetch("/api/bookings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        barber_id: selectedBarber.id,
-        shop_id: shop.id,
-        service_id: selectedService.id,
-        date: dateStr,
-        start_time: selectedTime + ":00",
-        end_time: endTime + ":00",
-      }),
-    });
+    try {
+      const response = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          barber_id: selectedBarber.id,
+          shop_id: shop.id,
+          service_id: selectedService.id,
+          date: dateStr,
+          start_time: selectedTime + ":00",
+          end_time: endTime + ":00",
+        }),
+      });
 
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({ error: "Error al reservar" }));
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Error al reservar" }));
+        toast({
+          variant: "destructive",
+          title: "Error al reservar",
+          description: String(payload.error || "").includes("overlap")
+            ? "Ese horario ya no está disponible, elige otro."
+            : payload.error || "No se pudo crear la reserva.",
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      setStep("success");
+    } catch {
       toast({
         variant: "destructive",
         title: "Error al reservar",
-        description: String(payload.error || "").includes("overlap")
-          ? "Ese horario ya no está disponible, elige otro."
-          : payload.error || "No se pudo crear la reserva.",
+        description: "No se pudo conectar con el servidor. Inténtalo otra vez.",
       });
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    setStep("success");
-    setSubmitting(false);
   }
 
   if (step === "success") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-        <CheckCircle2 className="h-20 w-20 text-green-500 mb-6" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[hsl(var(--muted))] px-4 text-center">
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+          <CheckCircle2 className="h-11 w-11" />
+        </div>
         <h1 className="text-2xl font-bold mb-2">¡Reserva confirmada!</h1>
         <p className="text-muted-foreground mb-2">
           <strong>{selectedService?.name}</strong> con{" "}
@@ -148,11 +169,14 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
           a las {selectedTime && formatTime(selectedTime)}
         </p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
-          <Link href={`/${shop.slug}`}>
-            <Button variant="outline" className="w-full">
+          <Button asChild variant="outline" className="w-full">
+            <Link href={`/${shop.slug}`}>
               Volver a {shop.name}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
+          <Button asChild className="w-full">
+            <Link href="/dashboard">Ver mis reservas</Link>
+          </Button>
         </div>
         <Toaster />
       </div>
@@ -160,44 +184,79 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b px-4 py-4 flex items-center gap-3">
-        <Link href={`/${shop.slug}`}>
-          <Button variant="ghost" size="icon">
+    <div className="min-h-screen bg-[hsl(var(--muted))]">
+      <header className="relative overflow-hidden bg-[hsl(var(--foreground))] text-white">
+        <div
+          className="absolute inset-0 opacity-28"
+          style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1200&q=80')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div className="relative mx-auto flex max-w-3xl items-center gap-3 px-4 py-5">
+          <Button asChild variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white">
+            <Link href={`/${shop.slug}`}>
             <ArrowLeft className="h-5 w-5" />
+            </Link>
           </Button>
-        </Link>
-        <div>
-          <p className="font-semibold text-sm">{shop.name}</p>
-          <p className="text-xs text-muted-foreground">
+          <div className="flex-1">
+            <p className="text-sm font-semibold">{shop.name}</p>
+            <p className="text-xs text-white/70">
             {step === "barber" && "Elige tu barbero"}
             {step === "service" && "Elige el servicio"}
             {step === "datetime" && "Elige fecha y hora"}
             {step === "confirm" && "Confirmar reserva"}
-          </p>
+            </p>
+          </div>
+          <div className="hidden text-right text-xs text-white/70 sm:block">
+            <p>Cliente</p>
+            <p className="font-medium text-white">{client.name}</p>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="mx-auto max-w-3xl px-4 py-6">
+        <div className="mb-5 grid grid-cols-4 gap-2">
+          {(["barber", "service", "datetime", "confirm"] as Step[]).map((item, index) => (
+            <div
+              key={item}
+              className={`h-1.5 rounded-full ${
+                ["barber", "service", "datetime", "confirm"].indexOf(step) >= index
+                  ? "bg-primary"
+                  : "bg-border"
+              }`}
+            />
+          ))}
+        </div>
+
         {/* Paso 1: Barbero */}
         {step === "barber" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">¿Con quién quieres tu cita?</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {shop.barbers.map((b) => (
+            {activeBarbers.length === 0 ? (
+              <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+                Esta barbería aún no tiene barberos activos para recibir reservas.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {activeBarbers.map((b) => (
                 <button
                   key={b.id}
                   onClick={() => { setSelectedBarber(b); setStep("service"); }}
-                  className="rounded-2xl border p-4 text-left hover:border-primary transition-colors"
+                  className="rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mb-3 text-xl font-bold text-muted-foreground">
-                    {b.display_name[0]}
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <UserRound className="h-6 w-6" />
                   </div>
                   <p className="font-medium text-sm">{b.display_name}</p>
+                  {b.specialty && <p className="text-xs text-primary mt-1">{b.specialty}</p>}
                   {b.bio && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{b.bio}</p>}
                 </button>
               ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -212,15 +271,15 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
             </div>
             <div className="space-y-2">
               {activeServices.length === 0 && (
-                <p className="rounded-xl border p-4 text-sm text-muted-foreground">
+                <p className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
                   Este barbero aún no tiene servicios asignados.
                 </p>
               )}
               {activeServices.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => { setSelectedService(s); }}
-                  className={`w-full rounded-2xl border p-4 text-left flex items-center justify-between transition-all ${
+                  onClick={() => { setSelectedService(s); setSelectedTime(null); }}
+                  className={`w-full rounded-lg border bg-background p-4 text-left flex items-center justify-between transition-all ${
                     selectedService?.id === s.id
                       ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : "hover:border-primary/40"
@@ -228,6 +287,11 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
                 >
                   <div>
                     <p className="font-medium">{s.name}</p>
+                    {s.description && (
+                      <p className="mt-1 max-w-[18rem] text-xs text-muted-foreground line-clamp-2">
+                        {s.description}
+                      </p>
+                    )}
                     <p className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
                       <Clock className="h-3.5 w-3.5" />
                       {s.duration_min} min
@@ -244,7 +308,7 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
                 className="w-full"
                 onClick={() => setStep("datetime")}
               >
-                Elegir fecha y hora →
+                Elegir fecha y hora
               </Button>
             )}
           </div>
@@ -266,7 +330,7 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
                 <button
                   key={date.toISOString()}
                   onClick={() => handleDateSelect(date)}
-                  className={`flex-shrink-0 rounded-2xl border p-3 text-center min-w-[60px] transition-all ${
+                  className={`flex-shrink-0 rounded-lg border p-3 text-center min-w-[64px] transition-all ${
                     selectedDate?.toDateString() === date.toDateString()
                       ? "border-primary bg-primary text-white"
                       : "hover:border-primary/40"
@@ -292,13 +356,19 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
                     {TIME_SLOTS.map((slot) => {
-                      const taken = bookedSlots.includes(slot);
+                      const duration = selectedService?.duration_min || 30;
+                      const slotEndMinutes = timeToMinutes(slot) + duration;
+                      const slotEnd = `${Math.floor(slotEndMinutes / 60).toString().padStart(2, "0")}:${(slotEndMinutes % 60).toString().padStart(2, "0")}`;
+                      const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
+                      const todayStr = format(new Date(), "yyyy-MM-dd");
+                      const inPast = dateStr === todayStr && timeToMinutes(slot) <= timeToMinutes(format(new Date(), "HH:mm"));
+                      const taken = inPast || bookedSlots.some((booked) => intervalsOverlap(slot, slotEnd, booked));
                       return (
                         <button
                           key={slot}
                           disabled={taken}
                           onClick={() => setSelectedTime(slot)}
-                          className={`rounded-xl border py-2.5 text-sm font-medium transition-all ${
+                          className={`rounded-lg border bg-background py-2.5 text-sm font-medium transition-all ${
                             taken
                               ? "opacity-30 cursor-not-allowed bg-muted"
                               : selectedTime === slot
@@ -317,7 +387,7 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
 
             {selectedDate && selectedTime && (
               <Button className="w-full" onClick={() => setStep("confirm")}>
-                Confirmar horario →
+                Confirmar horario
               </Button>
             )}
           </div>
@@ -328,8 +398,17 @@ export default function BookingFlow({ shop, preselectedBarberId }: Props) {
           <div className="space-y-5">
             <h2 className="text-lg font-semibold">Confirmar reserva</h2>
 
-            <Card>
+            <Card className="border-none">
               <CardContent className="p-5 space-y-4">
+                <div className="flex items-center gap-3 border-b pb-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Scissors className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">{shop.name}</p>
+                    <p className="text-xs text-muted-foreground">{client.name}</p>
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Barbero</span>
                   <span className="font-medium">{selectedBarber?.display_name}</span>
