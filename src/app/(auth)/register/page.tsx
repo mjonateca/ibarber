@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { COUNTRIES, getCitiesForCountry, getCountryName } from "@/lib/locations";
+import { COUNTRIES, getCitiesForCountry } from "@/lib/locations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +49,6 @@ type RegisterForm = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
 
   const {
     register,
@@ -81,40 +80,39 @@ export default function RegisterPage() {
     const supabase = createClient();
 
     try {
-      const fullName =
-        data.accountType === "barbershop"
-          ? data.businessName
-          : `${data.firstName} ${data.lastName || ""}`.trim();
+      await supabase.auth.signOut();
 
-      const { data: signUpData, error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            account_type: data.accountType,
-            first_name: data.firstName,
-            last_name: data.lastName || "",
-            business_name: data.businessName || "",
-            specialty: data.specialty || "",
-            shop_slug: data.shopSlug || "",
-            phone: data.phone,
-            country_code: data.countryCode,
-            country_name: getCountryName(data.countryCode),
-            city: data.city,
-            address: data.address || "",
-            description: data.description || "",
-            full_name: fullName,
-          },
-        },
+      const registerResponse = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountType: data.accountType,
+          firstName: data.firstName,
+          lastName: data.lastName || "",
+          businessName: data.businessName || "",
+          specialty: data.specialty || "",
+          shopSlug: data.shopSlug || "",
+          email: data.email,
+          phone: data.phone,
+          countryCode: data.countryCode,
+          city: data.city,
+          address: data.address || "",
+          description: data.description || "",
+          password: data.password,
+        }),
       });
 
-      if (error) throw error;
-
-      if (!signUpData.session) {
-        setConfirmationEmail(data.email);
-        setLoading(false);
-        return;
+      if (!registerResponse.ok) {
+        const payload = await registerResponse.json().catch(() => ({ error: "No se pudo crear la cuenta" }));
+        throw new Error(payload.error || "No se pudo crear la cuenta");
       }
+
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: data.email.trim().toLowerCase(),
+        password: data.password,
+      });
+
+      if (loginError) throw loginError;
 
       router.push("/dashboard");
       router.refresh();
@@ -132,33 +130,6 @@ export default function RegisterPage() {
       });
       setLoading(false);
     }
-  }
-
-  if (confirmationEmail) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Confirma tu correo</CardTitle>
-          <CardDescription>
-            Tu cuenta fue creada como cliente, pero falta confirmar el email.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-center">
-          <p className="rounded-lg border bg-muted p-4 text-sm text-muted-foreground">
-            Revisa la bandeja de entrada de <span className="font-medium text-foreground">{confirmationEmail}</span>.
-            Después de confirmar, inicia sesión para entrar a tu vista cliente.
-          </p>
-          <div className="grid gap-2">
-            <Button asChild>
-              <Link href="/login">Ir a iniciar sesión</Link>
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setConfirmationEmail(null)}>
-              Usar otro correo
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
   }
 
   return (
