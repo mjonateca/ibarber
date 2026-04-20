@@ -55,11 +55,21 @@ export default async function HomePage({ searchParams }: Props) {
     <main className="min-h-screen bg-background">
       <section className="px-4 py-8 md:py-12 border-b">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="bg-primary rounded-xl p-3">
-              <Scissors className="h-7 w-7 text-white" />
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-2">
+              <div className="bg-primary rounded-lg p-3">
+                <Scissors className="h-7 w-7 text-white" />
+              </div>
+              <span className="text-3xl font-bold">iBarber</span>
             </div>
-            <span className="text-3xl font-bold">iBarber</span>
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline">
+                <Link href="/login">Iniciar sesión</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/register">Registrarse</Link>
+              </Button>
+            </div>
           </div>
 
           <div className="max-w-2xl">
@@ -112,7 +122,7 @@ export default async function HomePage({ searchParams }: Props) {
               </p>
             </div>
             <Link href="/register" className="text-sm font-medium text-primary hover:underline">
-              Registrar barbería
+              Registrar cuenta
             </Link>
           </div>
 

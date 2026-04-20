@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import DashboardClient from "./dashboard-client";
+import ClientDashboardClient from "./client-dashboard-client";
+import BarberDashboardClient from "./barber-dashboard-client";
 import { IS_DEMO, demoShop, demoBookings } from "@/lib/demo-data";
 import type { Metadata } from "next";
+import type { Barber, Client, Profile, Service, Shop } from "@/types/database";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -21,7 +24,7 @@ export default async function DashboardPage() {
         barbers={[]}
         clients={[]}
         notificationEvents={[]}
-        stats={{ totalCompleted: 47, upcomingConfirmed: 8 }}
+        stats={{ totalCompleted: 47, upcomingConfirmed: 8, expectedToday: 3250, expectedWeek: 18500 }}
         todayStr={todayStr}
       />
     );
@@ -31,6 +34,115 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("user_id", user.id)
+    .single();
+
+  const typedProfile = profile as Profile | null;
+  if (typedProfile?.role === "client") {
+    const { data: clientData } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    const client = clientData as Client | null;
+    if (!client) redirect("/");
+
+    const [{ data: shopsRaw }, { data: favShops }, { data: favBarbers }, { data: bookingsRaw }] =
+      await Promise.all([
+        supabase
+          .from("shops")
+          .select("*, barbers(id, display_name, rating), services(*)")
+          .eq("is_active", true)
+          .order("city")
+          .order("name")
+          .limit(40),
+        supabase.from("favorite_shops").select("shop_id").eq("client_id", client.id),
+        supabase.from("favorite_barbers").select("barber_id").eq("client_id", client.id),
+        supabase
+          .from("bookings")
+          .select("*, shops(name, slug), barbers(display_name), services(name, price, currency), reviews(id)")
+          .eq("client_id", client.id)
+          .order("date", { ascending: false })
+          .order("start_time", { ascending: false })
+          .limit(20),
+      ]);
+
+    const shops = ((shopsRaw || []) as Array<Shop & { barbers?: Barber[]; services?: Service[] }>)
+      .filter((shop) => shop.country_code === typedProfile.country_code || !shop.country_code)
+      .sort((a, b) => {
+        const aCity = a.city?.toLowerCase() === typedProfile.city.toLowerCase() ? 0 : 1;
+        const bCity = b.city?.toLowerCase() === typedProfile.city.toLowerCase() ? 0 : 1;
+        return aCity - bCity;
+      });
+
+    return (
+      <ClientDashboardClient
+        profile={typedProfile}
+        client={client}
+        shops={shops}
+        favoriteShopIds={(favShops || []).map((item) => item.shop_id)}
+        favoriteBarberIds={(favBarbers || []).map((item) => item.barber_id)}
+        bookings={(bookingsRaw || []) as never}
+      />
+    );
+  }
+
+  if (typedProfile?.role === "barber") {
+    const { data: barberData } = await supabase
+      .from("barbers")
+      .select("*, shops(*), barber_services(service_id)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    const barber = barberData as (Barber & { shops?: Shop | null; barber_services?: Array<{ service_id: string }> }) | null;
+    if (!barber) redirect("/");
+
+    const today = format(new Date(), "yyyy-MM-dd");
+    const weekEnd = format(addDays(new Date(), 7), "yyyy-MM-dd");
+
+    const [{ data: todayBookingsRaw }, { data: upcomingBookingsRaw }, { data: servicesRaw }] =
+      await Promise.all([
+        supabase
+          .from("bookings")
+          .select("*, clients(name, phone, whatsapp), shops(name, slug), services(name, price, currency)")
+          .eq("barber_id", barber.id)
+          .eq("date", today)
+          .not("status", "in", '("cancelled","no_show")')
+          .order("start_time"),
+        supabase
+          .from("bookings")
+          .select("*, clients(name, phone, whatsapp), shops(name, slug), services(name, price, currency)")
+          .eq("barber_id", barber.id)
+          .gte("date", today)
+          .lte("date", weekEnd)
+          .not("status", "in", '("cancelled","no_show")')
+          .order("date")
+          .order("start_time"),
+        barber.barber_services?.length
+          ? supabase.from("services").select("*").in("id", barber.barber_services.map((item) => item.service_id))
+          : Promise.resolve({ data: [] }),
+      ]);
+
+    const todayBookings = (todayBookingsRaw || []) as Array<{ services?: { price?: number | null } | null }>;
+    const expectedToday = todayBookings.reduce((sum, booking) => sum + Number(booking.services?.price || 0), 0);
+
+    return (
+      <BarberDashboardClient
+        barber={barber}
+        services={(servicesRaw || []) as Service[]}
+        todayBookings={(todayBookingsRaw || []) as never}
+        upcomingBookings={(upcomingBookingsRaw || []) as never}
+        expectedToday={expectedToday}
+      />
+    );
+  }
 
   const { data: shopData } = await supabase
     .from("shops")
@@ -62,6 +174,19 @@ export default async function DashboardPage() {
     .from("bookings").select("*", { count: "exact", head: true })
     .eq("shop_id", shop.id).eq("status", "confirmed").gte("date", today);
 
+  const weekEnd = format(addDays(new Date(), 7), "yyyy-MM-dd");
+  const { data: weekBookingsRaw } = await supabase
+    .from("bookings")
+    .select("date, services(price)")
+    .eq("shop_id", shop.id)
+    .gte("date", today)
+    .lte("date", weekEnd)
+    .not("status", "in", '("cancelled","no_show")');
+
+  const expectedToday = todayBookings.reduce((sum, booking) => sum + Number(booking.services?.price || 0), 0);
+  const expectedWeek = ((weekBookingsRaw || []) as Array<{ services?: { price?: number | null } | null }>)
+    .reduce((sum, booking) => sum + Number(booking.services?.price || 0), 0);
+
   const [{ data: services }, { data: barbers }, { data: clients }, { data: notificationEvents }] =
     await Promise.all([
       supabase.from("services").select("*").eq("shop_id", shop.id).order("sort_order").order("name"),
@@ -87,7 +212,12 @@ export default async function DashboardPage() {
       barbers={(barbers || []) as never}
       clients={(clients || []) as never}
       notificationEvents={(notificationEvents || []) as never}
-      stats={{ totalCompleted: totalBookings || 0, upcomingConfirmed: pendingBookings || 0 }}
+      stats={{
+        totalCompleted: totalBookings || 0,
+        upcomingConfirmed: pendingBookings || 0,
+        expectedToday,
+        expectedWeek,
+      }}
       todayStr={todayStr}
     />
   );

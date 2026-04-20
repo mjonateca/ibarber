@@ -53,7 +53,7 @@ interface Props {
   barbers: BarberWithServices[];
   clients: ClientSummary[];
   notificationEvents: NotificationEvent[];
-  stats: { totalCompleted: number; upcomingConfirmed: number };
+  stats: { totalCompleted: number; upcomingConfirmed: number; expectedToday: number; expectedWeek: number };
   todayStr: string;
 }
 
@@ -227,6 +227,8 @@ export default function DashboardClient({
           <Metric title="Citas hoy" value={bookings.length} icon={Clock} />
           <Metric title="Completadas" value={stats.totalCompleted} icon={CheckCircle} />
           <Metric title="Próximas confirmadas" value={stats.upcomingConfirmed} icon={Users} />
+          <Metric title="Estimado hoy" value={formatCurrency(stats.expectedToday)} icon={Scissors} />
+          <Metric title="Estimado semana" value={formatCurrency(stats.expectedWeek)} icon={CalendarDays} />
         </div>
       )}
 
@@ -355,7 +357,7 @@ export default function DashboardClient({
   );
 }
 
-function Metric({ title, value, icon: Icon }: { title: string; value: number; icon: typeof Clock }) {
+function Metric({ title, value, icon: Icon }: { title: string; value: number | string; icon: typeof Clock }) {
   return (
     <Card className="shadow-none">
       <CardContent className="p-4 flex items-center gap-3">

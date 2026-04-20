@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +24,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
 
   const {
@@ -32,10 +34,11 @@ export default function LoginPage() {
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
   async function onSubmit(data: LoginForm) {
+    const redirectTo = searchParams.get("redirect") || "/dashboard";
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl?.startsWith("http")) {
       // Modo demo: entrar directamente
-      router.push("/dashboard");
+      router.push(redirectTo);
       return;
     }
 
@@ -50,7 +53,7 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      router.push("/dashboard");
+      router.push(redirectTo);
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error desconocido";
@@ -119,7 +122,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-muted-foreground">
           ¿No tienes cuenta?{" "}
           <Link href="/register" className="text-primary font-medium hover:underline">
-            Registra tu barbería
+            Regístrate
           </Link>
         </p>
       </CardContent>

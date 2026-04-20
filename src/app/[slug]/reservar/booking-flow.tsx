@@ -36,7 +36,7 @@ function generateDates(days = 14): Date[] {
   return Array.from({ length: days }, (_, i) => addDays(startOfDay(new Date()), i + 1));
 }
 
-export default function BookingFlow({ shop, client, preselectedBarberId }: Props) {
+export default function BookingFlow({ shop, preselectedBarberId }: Props) {
   const [step, setStep] = useState<Step>(preselectedBarberId ? "service" : "barber");
   const [selectedBarber, setSelectedBarber] = useState<ShopWithRelations["barbers"][number] | null>(
     preselectedBarberId

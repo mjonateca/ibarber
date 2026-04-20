@@ -16,10 +16,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "@/hooks/use-toast";
 
 const registerSchema = z.object({
-  accountType: z.enum(["client", "barbershop"]),
+  accountType: z.enum(["client", "barber", "barbershop"]),
   firstName: z.string().min(2, "Nombre requerido"),
   lastName: z.string().optional(),
   businessName: z.string().optional(),
+  specialty: z.string().optional(),
+  shopSlug: z.string().optional(),
   email: z.string().email("Correo inválido"),
   phone: z.string().min(7, "Teléfono requerido"),
   countryCode: z.string().min(2, "País requerido"),
@@ -33,11 +35,11 @@ const registerSchema = z.object({
     message: "Las contraseñas no coinciden",
     path: ["confirmPassword"],
   })
-  .refine((d) => d.accountType === "client" || Boolean(d.businessName?.trim()), {
+  .refine((d) => d.accountType !== "barbershop" || Boolean(d.businessName?.trim()), {
     message: "Nombre comercial requerido",
     path: ["businessName"],
   })
-  .refine((d) => d.accountType === "client" || Boolean(d.address?.trim()), {
+  .refine((d) => d.accountType !== "barbershop" || Boolean(d.address?.trim()), {
     message: "Dirección requerida",
     path: ["address"],
   });
@@ -70,7 +72,7 @@ export default function RegisterPage() {
   async function onSubmit(data: RegisterForm) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl?.startsWith("http")) {
-      router.push(data.accountType === "barbershop" ? "/dashboard" : "/");
+      router.push("/dashboard");
       return;
     }
 
@@ -92,6 +94,8 @@ export default function RegisterPage() {
             first_name: data.firstName,
             last_name: data.lastName || "",
             business_name: data.businessName || "",
+            specialty: data.specialty || "",
+            shop_slug: data.shopSlug || "",
             phone: data.phone,
             country_code: data.countryCode,
             country_name: getCountryName(data.countryCode),
@@ -105,7 +109,7 @@ export default function RegisterPage() {
 
       if (error) throw error;
 
-      router.push(data.accountType === "barbershop" ? "/dashboard" : "/");
+      router.push("/dashboard");
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error desconocido";
@@ -124,7 +128,7 @@ export default function RegisterPage() {
     <Card className="w-full max-w-xl">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Crea tu cuenta</CardTitle>
-        <CardDescription>Elige si reservas como cliente o gestionas una barbería.</CardDescription>
+        <CardDescription>Elige cómo usarás iBarber.</CardDescription>
       </CardHeader>
 
       <CardContent>
@@ -137,6 +141,7 @@ export default function RegisterPage() {
               {...register("accountType")}
             >
               <option value="client">Cliente</option>
+              <option value="barber">Barbero</option>
               <option value="barbershop">Barbería</option>
             </select>
           </div>
@@ -148,6 +153,19 @@ export default function RegisterPage() {
               {errors.businessName && (
                 <p className="text-xs text-destructive">{errors.businessName.message}</p>
               )}
+            </div>
+          )}
+
+          {accountType === "barber" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="specialty">Especialidad</Label>
+                <Input id="specialty" placeholder="Fade, barba, diseño..." {...register("specialty")} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shopSlug">Barbería donde trabajas</Label>
+                <Input id="shopSlug" placeholder="slug de la barbería, opcional" {...register("shopSlug")} />
+              </div>
             </div>
           )}
 
@@ -269,6 +287,8 @@ export default function RegisterPage() {
               </>
             ) : accountType === "barbershop" ? (
               "Registrar barbería"
+            ) : accountType === "barber" ? (
+              "Crear cuenta de barbero"
             ) : (
               "Crear cuenta"
             )}

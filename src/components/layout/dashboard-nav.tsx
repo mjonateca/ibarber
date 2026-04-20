@@ -6,8 +6,9 @@ import { LayoutDashboard, Calendar, Settings, Scissors, LogOut, Bell, UserRound,
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import type { AccountRole } from "@/types/database";
 
-const navItems = [
+const shopNavItems = [
   { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
   { href: "/dashboard", label: "Reservas", icon: Calendar },
   { href: "/dashboard", label: "Servicios", icon: Scissors },
@@ -17,10 +18,24 @@ const navItems = [
   { href: "/dashboard", label: "Ajustes", icon: Settings },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function DashboardNav({ userId }: { userId: string }) {
+const clientNavItems = [
+  { href: "/dashboard", label: "Cerca de mí", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Reservas", icon: Calendar },
+  { href: "/dashboard", label: "Favoritos", icon: Bell },
+  { href: "/dashboard", label: "Perfil", icon: UserRound },
+];
+
+const barberNavItems = [
+  { href: "/dashboard", label: "Hoy", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Turnos", icon: Calendar },
+  { href: "/dashboard", label: "Clientes", icon: Users },
+  { href: "/dashboard", label: "Perfil", icon: UserRound },
+];
+
+export default function DashboardNav({ role = "shop_owner" }: { role?: AccountRole }) {
   const pathname = usePathname();
   const router = useRouter();
+  const navItems = role === "client" ? clientNavItems : role === "barber" ? barberNavItems : shopNavItems;
 
   async function handleLogout() {
     const supabase = createClient();
