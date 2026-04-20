@@ -1,18 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
+import type { InputHTMLAttributes } from "react";
 import Link from "next/link";
-import { CheckCircle, XCircle, Clock, Users, ExternalLink, Loader2 } from "lucide-react";
-import { createRawClient } from "@/lib/supabase/raw-client";
+import {
+  Bell,
+  CalendarDays,
+  CheckCircle,
+  Clock,
+  ExternalLink,
+  Loader2,
+  Scissors,
+  Settings,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { formatCurrency, formatTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import type { Shop, BookingStatus } from "@/types/database";
+import type { Barber, BookingStatus, NotificationEvent, Service, Shop } from "@/types/database";
 
 export interface BookingWithRelations {
   id: string;
+  client_id?: string;
+  date?: string;
   start_time: string;
   end_time: string;
   status: BookingStatus;
@@ -21,222 +36,413 @@ export interface BookingWithRelations {
   services: { name: string; duration_min: number; price: number } | null;
 }
 
+type BarberWithServices = Barber & { barber_services?: Array<{ service_id: string }> };
+type ClientSummary = {
+  id: string;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  city?: string | null;
+  country_name?: string | null;
+};
+
 interface Props {
   shop: Shop;
   todayBookings: BookingWithRelations[];
+  services: Service[];
+  barbers: BarberWithServices[];
+  clients: ClientSummary[];
+  notificationEvents: NotificationEvent[];
   stats: { totalCompleted: number; upcomingConfirmed: number };
   todayStr: string;
 }
 
+const tabs = [
+  { id: "summary", label: "Resumen", icon: CheckCircle },
+  { id: "bookings", label: "Reservas", icon: CalendarDays },
+  { id: "services", label: "Servicios", icon: Scissors },
+  { id: "barbers", label: "Barberos", icon: UserRound },
+  { id: "clients", label: "Clientes", icon: Users },
+  { id: "schedule", label: "Horarios", icon: Clock },
+  { id: "whatsapp", label: "WhatsApp", icon: Bell },
+  { id: "settings", label: "Ajustes", icon: Settings },
+] as const;
+
+type TabId = (typeof tabs)[number]["id"];
+
 const STATUS_LABELS: Record<BookingStatus, string> = {
-  pending:   "Pendiente",
+  pending: "Pendiente",
   confirmed: "Confirmada",
+  rescheduled: "Reprogramada",
   completed: "Completada",
-  no_show:   "No se presentó",
+  no_show: "No se presentó",
   cancelled: "Cancelada",
 };
 
-const STATUS_COLORS: Record<BookingStatus, string> = {
-  pending:   "bg-yellow-100 text-yellow-800",
-  confirmed: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
-  no_show:   "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-600",
-};
-
-export default function DashboardClient({ shop, todayBookings, stats, todayStr }: Props) {
+export default function DashboardClient({
+  shop,
+  todayBookings,
+  services: initialServices,
+  barbers: initialBarbers,
+  clients,
+  notificationEvents,
+  stats,
+  todayStr,
+}: Props) {
+  const [activeTab, setActiveTab] = useState<TabId>("summary");
   const [bookings, setBookings] = useState(todayBookings);
+  const [services, setServices] = useState(initialServices);
+  const [barbers, setBarbers] = useState(initialBarbers);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  async function updateStatus(bookingId: string, status: BookingStatus) {
+  async function updateBooking(bookingId: string, status: BookingStatus) {
     setUpdatingId(bookingId);
-    const supabase = createRawClient();
+    const response = await fetch(`/api/bookings/${bookingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
 
-    const { error } = await supabase
-      .from("bookings")
-      .update({ status })
-      .eq("id", bookingId);
-
-    if (error) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: "Error" }));
+      toast({ variant: "destructive", title: "Error", description: payload.error });
     } else {
-      setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
-      );
-      toast({
-        title: status === "completed" ? "¡Servicio completado!" : "Estado actualizado",
-        description: STATUS_LABELS[status],
-      });
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)));
+      toast({ title: "Reserva actualizada", description: STATUS_LABELS[status] });
     }
 
     setUpdatingId(null);
   }
 
+  async function createService(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/dashboard/services", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shop_id: shop.id,
+        name: form.get("name"),
+        category: form.get("category"),
+        description: form.get("description"),
+        duration_min: Number(form.get("duration_min")),
+        price: Number(form.get("price")),
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "No se creó el servicio", description: payload.error });
+      return;
+    }
+    setServices((prev) => [...prev, payload]);
+    event.currentTarget.reset();
+    toast({ title: "Servicio creado" });
+  }
+
+  async function toggleService(service: Service) {
+    const response = await fetch(`/api/dashboard/services/${service.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !service.is_active, is_visible: !service.is_active }),
+    });
+    if (!response.ok) return;
+    setServices((prev) =>
+      prev.map((item) =>
+        item.id === service.id
+          ? { ...item, is_active: !item.is_active, is_visible: !item.is_active }
+          : item
+      )
+    );
+  }
+
+  async function createBarber(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const serviceIds = form.getAll("service_ids").map(String);
+    const response = await fetch("/api/dashboard/barbers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shop_id: shop.id,
+        display_name: form.get("display_name"),
+        specialty: form.get("specialty"),
+        bio: form.get("bio"),
+        service_ids: serviceIds,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "No se creó el barbero", description: payload.error });
+      return;
+    }
+    setBarbers((prev) => [...prev, { ...payload, barber_services: serviceIds.map((id) => ({ service_id: id })) }]);
+    event.currentTarget.reset();
+    toast({ title: "Barbero creado" });
+  }
+
+  async function toggleBarber(barber: BarberWithServices) {
+    const response = await fetch(`/api/dashboard/barbers/${barber.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !barber.is_active }),
+    });
+    if (!response.ok) return;
+    setBarbers((prev) =>
+      prev.map((item) => (item.id === barber.id ? { ...item, is_active: !item.is_active } : item))
+    );
+  }
+
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{shop.name}</h1>
-            <p className="text-muted-foreground capitalize">{todayStr}</p>
-          </div>
-          <Link
-            href={`/${shop.slug}`}
-            target="_blank"
-            className="flex items-center gap-1.5 text-sm text-primary font-medium hover:underline"
-          >
-            Ver página pública
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+    <div className="p-4 md:p-8 max-w-6xl">
+      <div className="mb-7 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{shop.name}</h1>
+          <p className="text-muted-foreground capitalize">
+            {shop.city ? `${shop.city} · ` : ""}
+            {todayStr}
+          </p>
         </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <Card className="shadow-none">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 rounded-xl p-2.5">
-                <Clock className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{bookings.length}</p>
-                <p className="text-xs text-muted-foreground">Citas hoy</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-none">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-green-100 rounded-xl p-2.5">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.totalCompleted}</p>
-                <p className="text-xs text-muted-foreground">Completadas</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-none col-span-2 md:col-span-1">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-orange-100 rounded-xl p-2.5">
-                <Users className="h-5 w-5 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.upcomingConfirmed}</p>
-                <p className="text-xs text-muted-foreground">Próximas reservas</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Citas de hoy */}
-      <Card className="shadow-none">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Citas de hoy</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {bookings.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Clock className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p>No hay citas para hoy</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {bookings.map((booking) => (
-                <div key={booking.id} className="p-4 flex items-start gap-4">
-                  {/* Hora */}
-                  <div className="min-w-[60px] text-center">
-                    <p className="font-bold text-sm">
-                      {formatTime(booking.start_time.slice(0, 5))}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatTime(booking.end_time.slice(0, 5))}
-                    </p>
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium text-sm">
-                          {booking.clients?.name || "Cliente"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {booking.services?.name} · {booking.barbers?.display_name}
-                        </p>
-                        {booking.services && (
-                          <p className="text-xs text-primary font-medium mt-0.5">
-                            {formatCurrency(booking.services.price)}
-                          </p>
-                        )}
-                      </div>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                          STATUS_COLORS[booking.status]
-                        }`}
-                      >
-                        {STATUS_LABELS[booking.status]}
-                      </span>
-                    </div>
-
-                    {/* Acciones */}
-                    {booking.status === "confirmed" && (
-                      <div className="flex gap-2 mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs border-green-500 text-green-600 hover:bg-green-50"
-                          disabled={updatingId === booking.id}
-                          onClick={() => updateStatus(booking.id, "completed")}
-                        >
-                          {updatingId === booking.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <><CheckCircle className="h-3 w-3 mr-1" /> Completada</>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs border-red-400 text-red-500 hover:bg-red-50"
-                          disabled={updatingId === booking.id}
-                          onClick={() => updateStatus(booking.id, "no_show")}
-                        >
-                          <XCircle className="h-3 w-3 mr-1" /> No llegó
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Link a página pública */}
-      <div className="mt-6 rounded-2xl bg-primary/5 border border-primary/20 p-4">
-        <p className="text-sm font-medium mb-1">Tu página de reservas</p>
-        <p className="text-xs text-muted-foreground mb-3">
-          Comparte este enlace con tus clientes para que puedan reservar directamente.
-        </p>
-        <Link href={`/${shop.slug}`} target="_blank">
-          <Button variant="outline" size="sm" className="text-primary border-primary/30">
-            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-            ibarber.do/{shop.slug}
-          </Button>
+        <Link href={`/${shop.slug}`} target="_blank" className="text-sm text-primary font-medium hover:underline">
+          Ver página pública <ExternalLink className="inline h-3.5 w-3.5" />
         </Link>
       </div>
 
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`h-10 px-3 rounded-lg border text-sm font-medium whitespace-nowrap ${
+              activeTab === tab.id ? "bg-primary text-white border-primary" : "bg-background"
+            }`}
+          >
+            <tab.icon className="inline h-4 w-4 mr-1.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "summary" && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Metric title="Citas hoy" value={bookings.length} icon={Clock} />
+          <Metric title="Completadas" value={stats.totalCompleted} icon={CheckCircle} />
+          <Metric title="Próximas confirmadas" value={stats.upcomingConfirmed} icon={Users} />
+        </div>
+      )}
+
+      {activeTab === "bookings" && (
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle>Reservas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {bookings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay citas para hoy.</p>
+            ) : bookings.map((booking) => (
+              <div key={booking.id} className="rounded-xl border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-medium">{booking.clients?.name || "Cliente"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatTime(booking.start_time.slice(0, 5))} · {booking.services?.name} · {booking.barbers?.display_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(["confirmed", "completed", "cancelled"] as BookingStatus[]).map((status) => (
+                    <Button key={status} size="sm" variant="outline" disabled={updatingId === booking.id} onClick={() => updateBooking(booking.id, status)}>
+                      {updatingId === booking.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : STATUS_LABELS[status]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "services" && (
+        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+          <Card className="shadow-none">
+            <CardHeader><CardTitle>Servicios</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {services.map((service) => (
+                <div key={service.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{service.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {service.category || "General"} · {service.duration_min} min · {formatCurrency(service.price, service.currency)}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => toggleService(service)}>
+                    {service.is_active ? "Desactivar" : "Activar"}
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <CreateServiceForm onSubmit={createService} />
+        </div>
+      )}
+
+      {activeTab === "barbers" && (
+        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+          <Card className="shadow-none">
+            <CardHeader><CardTitle>Barberos</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {barbers.map((barber) => (
+                <div key={barber.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{barber.display_name}</p>
+                    <p className="text-sm text-muted-foreground">{barber.specialty || "Sin especialidad"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {barber.barber_services?.length || 0} servicios asignados
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => toggleBarber(barber)}>
+                    {barber.is_active ? "Desactivar" : "Activar"}
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <CreateBarberForm services={services.filter((service) => service.is_active)} onSubmit={createBarber} />
+        </div>
+      )}
+
+      {activeTab === "clients" && (
+        <SimpleList title="Clientes" empty="Aún no hay clientes con reservas." items={clients.map((client) => ({
+          title: client.name,
+          detail: `${client.phone || client.whatsapp || "Sin teléfono"}${client.city ? ` · ${client.city}` : ""}`,
+        }))} />
+      )}
+
+      {activeTab === "schedule" && (
+        <SimpleList
+          title="Horarios"
+          empty="Configura horarios por barbero en la próxima iteración."
+          items={barbers.map((barber) => ({
+            title: barber.display_name,
+            detail: "Disponible para reglas semanales, bloqueos y excepciones.",
+          }))}
+        />
+      )}
+
+      {activeTab === "whatsapp" && (
+        <SimpleList
+          title="WhatsApp / Notificaciones"
+          empty="No hay notificaciones en cola."
+          items={notificationEvents.map((event) => ({
+            title: event.type.replaceAll("_", " "),
+            detail: `${event.status}${event.scheduled_for ? ` · ${new Date(event.scheduled_for).toLocaleString()}` : ""}`,
+          }))}
+        />
+      )}
+
+      {activeTab === "settings" && (
+        <Card className="shadow-none">
+          <CardHeader><CardTitle>Ajustes</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>{shop.name}</p>
+            <p>{shop.address}</p>
+            <p>{shop.city} · {shop.country_name}</p>
+            <p>{shop.description || "Sin descripción pública."}</p>
+          </CardContent>
+        </Card>
+      )}
+
       <Toaster />
     </div>
+  );
+}
+
+function Metric({ title, value, icon: Icon }: { title: string; value: number; icon: typeof Clock }) {
+  return (
+    <Card className="shadow-none">
+      <CardContent className="p-4 flex items-center gap-3">
+        <div className="bg-primary/10 rounded-xl p-2.5">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-xs text-muted-foreground">{title}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreateServiceForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <Card className="shadow-none">
+      <CardHeader><CardTitle>Nuevo servicio</CardTitle></CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <Field name="name" label="Nombre" required />
+          <Field name="category" label="Categoría" />
+          <Field name="duration_min" label="Duración minutos" type="number" defaultValue="30" required />
+          <Field name="price" label="Precio" type="number" defaultValue="500" required />
+          <div className="space-y-1">
+            <Label htmlFor="description">Descripción</Label>
+            <textarea id="description" name="description" className="min-h-[76px] w-full rounded-xl border bg-background px-3 py-2 text-sm" />
+          </div>
+          <Button type="submit" className="w-full">Crear servicio</Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreateBarberForm({ services, onSubmit }: { services: Service[]; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <Card className="shadow-none">
+      <CardHeader><CardTitle>Nuevo barbero</CardTitle></CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <Field name="display_name" label="Nombre público" required />
+          <Field name="specialty" label="Especialidad" />
+          <div className="space-y-1">
+            <Label htmlFor="bio">Bio</Label>
+            <textarea id="bio" name="bio" className="min-h-[76px] w-full rounded-xl border bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className="space-y-2">
+            <Label>Servicios</Label>
+            <div className="space-y-2 rounded-xl border p-3">
+              {services.map((service) => (
+                <label key={service.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="service_ids" value={service.id} />
+                  {service.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button type="submit" className="w-full">Crear barbero</Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({ label, ...props }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={props.name}>{label}</Label>
+      <Input id={props.name} {...props} />
+    </div>
+  );
+}
+
+function SimpleList({ title, empty, items }: { title: string; empty: string; items: Array<{ title: string; detail: string }> }) {
+  return (
+    <Card className="shadow-none">
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {items.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : items.map((item, index) => (
+          <div key={`${item.title}-${index}`} className="rounded-xl border p-4">
+            <p className="font-medium">{item.title}</p>
+            <p className="text-sm text-muted-foreground">{item.detail}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

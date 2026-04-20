@@ -17,6 +17,10 @@ export default async function DashboardPage() {
       <DashboardClient
         shop={demoShop}
         todayBookings={demoBookings}
+        services={[]}
+        barbers={[]}
+        clients={[]}
+        notificationEvents={[]}
         stats={{ totalCompleted: 47, upcomingConfirmed: 8 }}
         todayStr={todayStr}
       />
@@ -58,10 +62,31 @@ export default async function DashboardPage() {
     .from("bookings").select("*", { count: "exact", head: true })
     .eq("shop_id", shop.id).eq("status", "confirmed").gte("date", today);
 
+  const [{ data: services }, { data: barbers }, { data: clients }, { data: notificationEvents }] =
+    await Promise.all([
+      supabase.from("services").select("*").eq("shop_id", shop.id).order("sort_order").order("name"),
+      supabase.from("barbers").select("*, barber_services(service_id)").eq("shop_id", shop.id).order("display_name"),
+      supabase
+        .from("clients")
+        .select("id,name,phone,whatsapp,city,country_name")
+        .in("id", (todayBookingsRaw || []).map((booking) => booking.client_id).filter(Boolean))
+        .limit(50),
+      supabase
+        .from("notification_events")
+        .select("*")
+        .eq("shop_id", shop.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+
   return (
     <DashboardClient
       shop={shop}
       todayBookings={todayBookings}
+      services={(services || []) as never}
+      barbers={(barbers || []) as never}
+      clients={(clients || []) as never}
+      notificationEvents={(notificationEvents || []) as never}
       stats={{ totalCompleted: totalBookings || 0, upcomingConfirmed: pendingBookings || 0 }}
       todayStr={todayStr}
     />

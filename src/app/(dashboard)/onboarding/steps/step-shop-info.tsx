@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Loader2, Store, Globe } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { slugify } from "@/lib/utils";
+import { COUNTRIES, getCitiesForCountry, getCountryName } from "@/lib/locations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,9 @@ const schema = z.object({
     .regex(/^[a-z0-9-]+$/, "Solo letras minúsculas, números y guiones"),
   phone: z.string().min(7, "Teléfono requerido"),
   address: z.string().min(5, "Dirección requerida"),
+  countryCode: z.string().min(2, "País requerido"),
+  city: z.string().min(2, "Ciudad requerida"),
+  description: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -51,11 +55,16 @@ export default function StepShopInfo({ data, onUpdate, onNext }: Props) {
       slug: data.slug || "",
       phone: data.phone || "",
       address: data.address || "",
+      countryCode: data.countryCode || "DO",
+      city: data.city || "Santo Domingo",
+      description: data.description || "",
     },
   });
 
   const shopName = watch("shopName");
   const slug = watch("slug");
+  const countryCode = watch("countryCode");
+  const cities = getCitiesForCountry(countryCode);
 
   // Auto-generate slug from shop name
   useEffect(() => {
@@ -92,7 +101,7 @@ export default function StepShopInfo({ data, onUpdate, onNext }: Props) {
   async function onSubmit(formData: FormData) {
     if (slugAvailable === false) return;
     setLoading(true);
-    onUpdate(formData);
+    onUpdate({ ...formData, countryName: getCountryName(formData.countryCode) });
     onNext();
     setLoading(false);
   }
@@ -183,6 +192,51 @@ export default function StepShopInfo({ data, onUpdate, onNext }: Props) {
             {errors.address && (
               <p className="text-xs text-destructive">{errors.address.message}</p>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="countryCode">País *</Label>
+              <select
+                id="countryCode"
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                {...register("countryCode", {
+                  onChange: (event) => {
+                    const nextCities = getCitiesForCountry(event.target.value);
+                    setValue("city", nextCities[0] || "");
+                  },
+                })}
+              >
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">Ciudad *</Label>
+              <select
+                id="city"
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                {...register("city")}
+              >
+                {cities.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Descripción pública</Label>
+            <textarea
+              id="description"
+              className="flex min-h-[84px] w-full rounded-xl border border-input bg-background px-4 py-3 text-sm"
+              {...register("description")}
+            />
           </div>
 
           <Button

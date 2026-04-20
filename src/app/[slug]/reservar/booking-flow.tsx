@@ -14,7 +14,7 @@ import { Toaster } from "@/components/ui/toaster";
 import type { Shop, Barber, Service, Client } from "@/types/database";
 
 interface ShopWithRelations extends Shop {
-  barbers: Barber[];
+  barbers: Array<Barber & { barber_services?: Array<{ service_id: string }> }>;
   services: Service[];
 }
 
@@ -38,7 +38,7 @@ function generateDates(days = 14): Date[] {
 
 export default function BookingFlow({ shop, client, preselectedBarberId }: Props) {
   const [step, setStep] = useState<Step>(preselectedBarberId ? "service" : "barber");
-  const [selectedBarber, setSelectedBarber] = useState<Barber | null>(
+  const [selectedBarber, setSelectedBarber] = useState<ShopWithRelations["barbers"][number] | null>(
     preselectedBarberId
       ? shop.barbers.find((b) => b.id === preselectedBarberId) || null
       : null
@@ -50,7 +50,15 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const activeServices = shop.services.filter((s) => s.is_active);
+  const compatibleServiceIds = new Set(
+    selectedBarber?.barber_services?.map((item: { service_id: string }) => item.service_id) || []
+  );
+  const activeServices = shop.services.filter(
+    (s) =>
+      s.is_active &&
+      s.is_visible !== false &&
+      (!selectedBarber || compatibleServiceIds.size === 0 || compatibleServiceIds.has(s.id))
+  );
   const dates = generateDates(14);
 
   async function loadBookedSlots(barberId: string, date: Date) {
@@ -90,33 +98,33 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
       return;
     }
 
-    const supabase = createClient();
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const [h, m] = selectedTime.split(":").map(Number);
     const endH = Math.floor((h * 60 + m + selectedService.duration_min) / 60);
     const endM = (h * 60 + m + selectedService.duration_min) % 60;
     const endTime = `${endH.toString().padStart(2, "0")}:${endM.toString().padStart(2, "0")}`;
 
-    const { error } = await supabase.from("bookings").insert({
-      client_id: client.id,
-      barber_id: selectedBarber.id,
-      shop_id: shop.id,
-      service_id: selectedService.id,
-      date: dateStr,
-      start_time: selectedTime + ":00",
-      end_time: endTime + ":00",
-      status: "confirmed",
-      deposit_status: "none",
-      deposit_amount: 0,
+    const response = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        barber_id: selectedBarber.id,
+        shop_id: shop.id,
+        service_id: selectedService.id,
+        date: dateStr,
+        start_time: selectedTime + ":00",
+        end_time: endTime + ":00",
+      }),
     });
 
-    if (error) {
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: "Error al reservar" }));
       toast({
         variant: "destructive",
         title: "Error al reservar",
-        description: error.message.includes("overlap")
+        description: String(payload.error || "").includes("overlap")
           ? "Ese horario ya no está disponible, elige otro."
-          : error.message,
+          : payload.error || "No se pudo crear la reserva.",
       });
       setSubmitting(false);
       return;
@@ -203,6 +211,11 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
               <h2 className="text-lg font-semibold">¿Qué servicio quieres?</h2>
             </div>
             <div className="space-y-2">
+              {activeServices.length === 0 && (
+                <p className="rounded-xl border p-4 text-sm text-muted-foreground">
+                  Este barbero aún no tiene servicios asignados.
+                </p>
+              )}
               {activeServices.map((s) => (
                 <button
                   key={s.id}

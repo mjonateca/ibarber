@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, Settings, Scissors, LogOut } from "lucide-react";
+import { LayoutDashboard, Calendar, Settings, Scissors, LogOut, Bell, UserRound, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 const navItems = [
-  { href: "/dashboard",          label: "Inicio",     icon: LayoutDashboard },
-  { href: "/dashboard/agenda",   label: "Agenda",     icon: Calendar },
-  { href: "/dashboard/settings", label: "Ajustes",    icon: Settings },
+  { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Reservas", icon: Calendar },
+  { href: "/dashboard", label: "Servicios", icon: Scissors },
+  { href: "/dashboard", label: "Barberos", icon: UserRound },
+  { href: "/dashboard", label: "Clientes", icon: Users },
+  { href: "/dashboard", label: "WhatsApp", icon: Bell },
+  { href: "/dashboard", label: "Ajustes", icon: Settings },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

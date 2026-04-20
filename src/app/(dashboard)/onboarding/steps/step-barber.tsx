@@ -58,14 +58,19 @@ export default function StepBarber({ data, onBack, onComplete, userId }: Props) 
 
     try {
       // 1. Crear el shop
-      const { data: shop, error: shopError } = await supabase
+      let { data: shop, error: shopError } = await supabase
         .from("shops")
         .insert({
           owner_id: userId,
           name: data.shopName!,
           slug: data.slug!,
           phone: data.phone || null,
+          whatsapp: data.phone || null,
           address: data.address || null,
+          country_code: data.countryCode || "DO",
+          country_name: data.countryName || "República Dominicana",
+          city: data.city || "Santo Domingo",
+          description: data.description || null,
           opening_hours: {
             lunes:     { open: "09:00", close: "19:00", closed: false },
             martes:    { open: "09:00", close: "19:00", closed: false },
@@ -79,11 +84,36 @@ export default function StepBarber({ data, onBack, onComplete, userId }: Props) 
         .select()
         .single();
 
+      if (shopError && /country_code|country_name|city|description|whatsapp/.test(shopError.message)) {
+        const fallback = await supabase
+          .from("shops")
+          .insert({
+            owner_id: userId,
+            name: data.shopName!,
+            slug: data.slug!,
+            phone: data.phone || null,
+            address: data.address || null,
+            opening_hours: {
+              lunes:     { open: "09:00", close: "19:00", closed: false },
+              martes:    { open: "09:00", close: "19:00", closed: false },
+              miercoles: { open: "09:00", close: "19:00", closed: false },
+              jueves:    { open: "09:00", close: "19:00", closed: false },
+              viernes:   { open: "09:00", close: "19:00", closed: false },
+              sabado:    { open: "09:00", close: "17:00", closed: false },
+              domingo:   { open: "09:00", close: "13:00", closed: true },
+            },
+          })
+          .select()
+          .single();
+        shop = fallback.data;
+        shopError = fallback.error;
+      }
+
       if (shopError) throw shopError;
 
       // 2. Crear los servicios
       if (data.services && data.services.length > 0) {
-        const { error: svcError } = await supabase
+        let { error: svcError } = await supabase
           .from("services")
           .insert(
             data.services.map((s) => ({
@@ -92,21 +122,53 @@ export default function StepBarber({ data, onBack, onComplete, userId }: Props) 
               duration_min: s.duration_min,
               price: s.price,
               currency: "DOP",
+              description: null,
+              category: "General",
+              is_visible: true,
             }))
           );
+        if (svcError && /description|category|is_visible/.test(svcError.message)) {
+          const fallback = await supabase
+            .from("services")
+            .insert(
+              data.services.map((s) => ({
+                shop_id: shop.id,
+                name: s.name,
+                duration_min: s.duration_min,
+                price: s.price,
+                currency: "DOP",
+              }))
+            );
+          svcError = fallback.error;
+        }
         if (svcError) throw svcError;
       }
 
       // 3. Crear el perfil de barbero del dueño
-      const { error: barberError } = await supabase
+      let { error: barberError } = await supabase
         .from("barbers")
         .insert({
           user_id: userId,
           shop_id: shop.id,
           display_name: formData.barberName,
           bio: formData.barberBio || null,
+          specialty: null,
+          is_active: true,
           is_independent: false,
         });
+
+      if (barberError && /specialty|is_active/.test(barberError.message)) {
+        const fallback = await supabase
+          .from("barbers")
+          .insert({
+            user_id: userId,
+            shop_id: shop.id,
+            display_name: formData.barberName,
+            bio: formData.barberBio || null,
+            is_independent: false,
+          });
+        barberError = fallback.error;
+      }
 
       if (barberError) throw barberError;
 

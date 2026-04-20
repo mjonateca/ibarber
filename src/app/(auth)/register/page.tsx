@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { COUNTRIES, getCitiesForCountry, getCountryName } from "@/lib/locations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,14 +16,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "@/hooks/use-toast";
 
 const registerSchema = z.object({
-  name: z.string().min(2, "Nombre requerido"),
+  accountType: z.enum(["client", "barbershop"]),
+  firstName: z.string().min(2, "Nombre requerido"),
+  lastName: z.string().optional(),
+  businessName: z.string().optional(),
   email: z.string().email("Correo inválido"),
+  phone: z.string().min(7, "Teléfono requerido"),
+  countryCode: z.string().min(2, "País requerido"),
+  city: z.string().min(2, "Ciudad requerida"),
+  address: z.string().optional(),
+  description: z.string().optional(),
   password: z.string().min(6, "Mínimo 6 caracteres"),
   confirmPassword: z.string(),
-}).refine((d) => d.password === d.confirmPassword, {
-  message: "Las contraseñas no coinciden",
-  path: ["confirmPassword"],
-});
+})
+  .refine((d) => d.password === d.confirmPassword, {
+    message: "Las contraseñas no coinciden",
+    path: ["confirmPassword"],
+  })
+  .refine((d) => d.accountType === "client" || Boolean(d.businessName?.trim()), {
+    message: "Nombre comercial requerido",
+    path: ["businessName"],
+  })
+  .refine((d) => d.accountType === "client" || Boolean(d.address?.trim()), {
+    message: "Dirección requerida",
+    path: ["address"],
+  });
 
 type RegisterForm = z.infer<typeof registerSchema>;
 
@@ -33,14 +51,26 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
-  } = useForm<RegisterForm>({ resolver: zodResolver(registerSchema) });
+  } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      accountType: "client",
+      countryCode: "DO",
+      city: "Santo Domingo",
+    },
+  });
+
+  const accountType = watch("accountType");
+  const countryCode = watch("countryCode");
+  const cities = getCitiesForCountry(countryCode);
 
   async function onSubmit(data: RegisterForm) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl?.startsWith("http")) {
-      // Modo demo: saltar al onboarding directamente
-      router.push("/onboarding");
+      router.push(data.accountType === "barbershop" ? "/dashboard" : "/");
       return;
     }
 
@@ -48,17 +78,34 @@ export default function RegisterPage() {
     const supabase = createClient();
 
     try {
+      const fullName =
+        data.accountType === "barbershop"
+          ? data.businessName
+          : `${data.firstName} ${data.lastName || ""}`.trim();
+
       const { error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
-          data: { full_name: data.name },
+          data: {
+            account_type: data.accountType,
+            first_name: data.firstName,
+            last_name: data.lastName || "",
+            business_name: data.businessName || "",
+            phone: data.phone,
+            country_code: data.countryCode,
+            country_name: getCountryName(data.countryCode),
+            city: data.city,
+            address: data.address || "",
+            description: data.description || "",
+            full_name: fullName,
+          },
         },
       });
 
       if (error) throw error;
 
-      router.push("/onboarding");
+      router.push(data.accountType === "barbershop" ? "/dashboard" : "/");
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error desconocido";
@@ -74,69 +121,144 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-xl">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Crea tu cuenta</CardTitle>
-        <CardDescription>Registra tu barbería en minutos</CardDescription>
+        <CardDescription>Elige si reservas como cliente o gestionas una barbería.</CardDescription>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Tu nombre</Label>
-            <Input
-              id="name"
-              placeholder="Juan Pérez"
-              autoComplete="name"
-              {...register("name")}
-            />
-            {errors.name && (
-              <p className="text-xs text-destructive">{errors.name.message}</p>
-            )}
+            <Label htmlFor="accountType">Tipo de cuenta</Label>
+            <select
+              id="accountType"
+              className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+              {...register("accountType")}
+            >
+              <option value="client">Cliente</option>
+              <option value="barbershop">Barbería</option>
+            </select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Correo electrónico</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="tubarber@ejemplo.com"
-              autoComplete="email"
-              {...register("email")}
-            />
-            {errors.email && (
-              <p className="text-xs text-destructive">{errors.email.message}</p>
-            )}
+          {accountType === "barbershop" && (
+            <div className="space-y-2">
+              <Label htmlFor="businessName">Nombre comercial *</Label>
+              <Input id="businessName" autoComplete="organization" {...register("businessName")} />
+              {errors.businessName && (
+                <p className="text-xs text-destructive">{errors.businessName.message}</p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="firstName">
+                {accountType === "barbershop" ? "Contacto *" : "Nombre *"}
+              </Label>
+              <Input id="firstName" autoComplete="given-name" {...register("firstName")} />
+              {errors.firstName && (
+                <p className="text-xs text-destructive">{errors.firstName.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lastName">Apellidos</Label>
+              <Input id="lastName" autoComplete="family-name" {...register("lastName")} />
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              autoComplete="new-password"
-              {...register("password")}
-            />
-            {errors.password && (
-              <p className="text-xs text-destructive">{errors.password.message}</p>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="email">Correo de acceso *</Label>
+              <Input id="email" type="email" autoComplete="email" {...register("email")} />
+              {errors.email && (
+                <p className="text-xs text-destructive">{errors.email.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Teléfono / WhatsApp *</Label>
+              <Input id="phone" type="tel" autoComplete="tel" {...register("phone")} />
+              {errors.phone && (
+                <p className="text-xs text-destructive">{errors.phone.message}</p>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              placeholder="••••••••"
-              autoComplete="new-password"
-              {...register("confirmPassword")}
-            />
-            {errors.confirmPassword && (
-              <p className="text-xs text-destructive">
-                {errors.confirmPassword.message}
-              </p>
-            )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="countryCode">País *</Label>
+              <select
+                id="countryCode"
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                {...register("countryCode", {
+                  onChange: (event) => {
+                    const nextCities = getCitiesForCountry(event.target.value);
+                    setValue("city", nextCities[0] || "");
+                  },
+                })}
+              >
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="city">Ciudad *</Label>
+              <select
+                id="city"
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
+                {...register("city")}
+              >
+                {cities.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+              {errors.city && <p className="text-xs text-destructive">{errors.city.message}</p>}
+            </div>
+          </div>
+
+          {accountType === "barbershop" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="address">Dirección *</Label>
+                <Input id="address" autoComplete="street-address" {...register("address")} />
+                {errors.address && (
+                  <p className="text-xs text-destructive">{errors.address.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <textarea
+                  id="description"
+                  className="flex min-h-[84px] w-full rounded-xl border border-input bg-background px-4 py-3 text-sm"
+                  placeholder="Especialidad, ambiente, zona o ventajas de tu barbería."
+                  {...register("description")}
+                />
+              </div>
+            </>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="password">Contraseña *</Label>
+              <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+              {errors.password && (
+                <p className="text-xs text-destructive">{errors.password.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar *</Label>
+              <Input id="confirmPassword" type="password" autoComplete="new-password" {...register("confirmPassword")} />
+              {errors.confirmPassword && (
+                <p className="text-xs text-destructive">{errors.confirmPassword.message}</p>
+              )}
+            </div>
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
@@ -145,8 +267,10 @@ export default function RegisterPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creando cuenta...
               </>
+            ) : accountType === "barbershop" ? (
+              "Registrar barbería"
             ) : (
-              "Crear cuenta gratis"
+              "Crear cuenta"
             )}
           </Button>
         </form>

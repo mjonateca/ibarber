@@ -14,6 +14,10 @@ export interface OnboardingData {
   slug: string;
   phone: string;
   address: string;
+  countryCode: string;
+  countryName: string;
+  city: string;
+  description: string;
   // Paso 2
   services: Array<{ name: string; duration_min: number; price: number }>;
   // Paso 3 — barbero principal (el dueño)

@@ -13,6 +13,11 @@ export const demoShop: Shop = {
   lng: -70.6970,
   phone: "+1 809-555-0100",
   whatsapp: "+1 809-555-0100",
+  country_code: "DO",
+  country_name: "República Dominicana",
+  city: "Santiago",
+  description: "Barbería demo para probar reservas, barberos y servicios.",
+  is_active: true,
   opening_hours: {
     lunes:     { open: "09:00", close: "19:00", closed: false },
     martes:    { open: "09:00", close: "19:00", closed: false },
@@ -38,6 +43,8 @@ export const demoBarbers: Barber[] = [
     portfolio_urls: [],
     rating: 4.8,
     is_independent: false,
+    specialty: "Cortes clásicos",
+    is_active: true,
     created_at: new Date().toISOString(),
   },
   {
@@ -50,15 +57,17 @@ export const demoBarbers: Barber[] = [
     portfolio_urls: [],
     rating: 4.6,
     is_independent: false,
+    specialty: "Degradados",
+    is_active: true,
     created_at: new Date().toISOString(),
   },
 ];
 
 export const demoServices: Service[] = [
-  { id: "svc-1", shop_id: "demo-shop-1", name: "Corte de cabello", duration_min: 30, price: 350, currency: "DOP", is_active: true, created_at: new Date().toISOString() },
-  { id: "svc-2", shop_id: "demo-shop-1", name: "Corte + barba",    duration_min: 45, price: 550, currency: "DOP", is_active: true, created_at: new Date().toISOString() },
-  { id: "svc-3", shop_id: "demo-shop-1", name: "Barba",            duration_min: 20, price: 300, currency: "DOP", is_active: true, created_at: new Date().toISOString() },
-  { id: "svc-4", shop_id: "demo-shop-1", name: "Corte infantil",   duration_min: 25, price: 300, currency: "DOP", is_active: true, created_at: new Date().toISOString() },
+  { id: "svc-1", shop_id: "demo-shop-1", name: "Corte de cabello", duration_min: 30, price: 350, currency: "DOP", is_active: true, description: "Corte clásico o moderno.", category: "Cabello", is_visible: true, sort_order: 1, created_at: new Date().toISOString() },
+  { id: "svc-2", shop_id: "demo-shop-1", name: "Corte + barba",    duration_min: 45, price: 550, currency: "DOP", is_active: true, description: "Corte completo con perfilado.", category: "Combo", is_visible: true, sort_order: 2, created_at: new Date().toISOString() },
+  { id: "svc-3", shop_id: "demo-shop-1", name: "Barba",            duration_min: 20, price: 300, currency: "DOP", is_active: true, description: "Arreglo y perfilado de barba.", category: "Barba", is_visible: true, sort_order: 3, created_at: new Date().toISOString() },
+  { id: "svc-4", shop_id: "demo-shop-1", name: "Corte infantil",   duration_min: 25, price: 300, currency: "DOP", is_active: true, description: "Corte para niños.", category: "Cabello", is_visible: true, sort_order: 4, created_at: new Date().toISOString() },
 ];
 
 export const demoClient: Client = {
@@ -67,6 +76,11 @@ export const demoClient: Client = {
   name: "Demo Usuario",
   phone: "+1 809-555-0200",
   whatsapp: "+1 809-555-0200",
+  first_name: "Demo",
+  last_name: "Usuario",
+  country_code: "DO",
+  country_name: "República Dominicana",
+  city: "Santiago",
   created_at: new Date().toISOString(),
 };
 

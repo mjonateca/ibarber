@@ -11,6 +11,11 @@ const createBookingSchema = z.object({
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
 });
 
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -41,6 +46,24 @@ export async function POST(request: Request) {
   }
 
   // Verificar disponibilidad
+  const { data: compatible } = await supabase
+    .from("barber_services")
+    .select("barber_id")
+    .eq("barber_id", parsed.data.barber_id)
+    .eq("service_id", parsed.data.service_id)
+    .single();
+
+  if (!compatible) {
+    return NextResponse.json(
+      { error: "El barbero seleccionado no ofrece ese servicio" },
+      { status: 409 }
+    );
+  }
+
+  if (timeToMinutes(parsed.data.end_time) <= timeToMinutes(parsed.data.start_time)) {
+    return NextResponse.json({ error: "Horario inválido" }, { status: 400 });
+  }
+
   const { data: conflict } = await supabase
     .from("bookings")
     .select("id")
@@ -89,6 +112,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const shopId = searchParams.get("shop_id");
   const date = searchParams.get("date");
+  const status = searchParams.get("status");
+  const barberId = searchParams.get("barber_id");
 
   if (!shopId) {
     return NextResponse.json({ error: "shop_id requerido" }, { status: 400 });
@@ -120,6 +145,12 @@ export async function GET(request: Request) {
 
   if (date) {
     query = query.eq("date", date);
+  }
+  if (status) {
+    query = query.eq("status", status);
+  }
+  if (barberId) {
+    query = query.eq("barber_id", barberId);
   }
 
   const { data, error } = await query;
