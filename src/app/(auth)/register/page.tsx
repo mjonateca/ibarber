@@ -49,6 +49,7 @@ type RegisterForm = z.infer<typeof registerSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
 
   const {
     register,
@@ -85,7 +86,7 @@ export default function RegisterPage() {
           ? data.businessName
           : `${data.firstName} ${data.lastName || ""}`.trim();
 
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
@@ -109,6 +110,12 @@ export default function RegisterPage() {
 
       if (error) throw error;
 
+      if (!signUpData.session) {
+        setConfirmationEmail(data.email);
+        setLoading(false);
+        return;
+      }
+
       router.push("/dashboard");
       router.refresh();
     } catch (err: unknown) {
@@ -116,12 +123,42 @@ export default function RegisterPage() {
       toast({
         variant: "destructive",
         title: "Error al registrarse",
-        description: msg.includes("Invalid URL") || msg.includes("supabaseUrl")
-          ? "Supabase no está configurado. Agrega las variables en .env.local."
-          : msg,
+        description:
+          msg.includes("Invalid URL") || msg.includes("supabaseUrl")
+            ? "Supabase no está configurado. Agrega las variables en .env.local."
+            : msg.includes("email") && msg.includes("invalid")
+              ? "Usa un correo real. Algunos dominios de prueba no son aceptados."
+              : msg,
       });
       setLoading(false);
     }
+  }
+
+  if (confirmationEmail) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Confirma tu correo</CardTitle>
+          <CardDescription>
+            Tu cuenta fue creada como cliente, pero falta confirmar el email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-center">
+          <p className="rounded-lg border bg-muted p-4 text-sm text-muted-foreground">
+            Revisa la bandeja de entrada de <span className="font-medium text-foreground">{confirmationEmail}</span>.
+            Después de confirmar, inicia sesión para entrar a tu vista cliente.
+          </p>
+          <div className="grid gap-2">
+            <Button asChild>
+              <Link href="/login">Ir a iniciar sesión</Link>
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setConfirmationEmail(null)}>
+              Usar otro correo
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
