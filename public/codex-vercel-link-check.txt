@@ -1,3 +1,0 @@
-iBarber Vercel/GitHub integration check
-Created by Codex on 2026-04-20.
-This static file is safe to serve and can be removed after verification.
