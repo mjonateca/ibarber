@@ -20,7 +20,7 @@ create table if not exists public.cities (
   id uuid primary key default uuid_generate_v4(),
   country_code text not null references public.countries(code) on delete cascade,
   name text not null,
-  normalized_name text generated always as (lower(unaccent(trim(name)))) stored,
+  normalized_name text generated always as (lower(trim(name))) stored,
   lat numeric(10, 7),
   lng numeric(10, 7),
   is_active boolean not null default true,
@@ -62,13 +62,13 @@ values
 on conflict (country_code, normalized_name) do update set name = excluded.name, is_active = true;
 
 alter table public.shops
-  add column if not exists city_normalized text generated always as (lower(unaccent(trim(coalesce(city, ''))))) stored;
+  add column if not exists city_normalized text generated always as (lower(trim(coalesce(city, '')))) stored;
 
 alter table public.clients
-  add column if not exists city_normalized text generated always as (lower(unaccent(trim(coalesce(city, ''))))) stored;
+  add column if not exists city_normalized text generated always as (lower(trim(coalesce(city, '')))) stored;
 
 alter table public.profiles
-  add column if not exists city_normalized text generated always as (lower(unaccent(trim(coalesce(city, ''))))) stored;
+  add column if not exists city_normalized text generated always as (lower(trim(coalesce(city, '')))) stored;
 
 create index if not exists shops_location_public_idx
   on public.shops(country_code, city_normalized, is_active);
