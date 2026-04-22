@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import type { Barber, Client, Profile, Service, Shop } from "@/types/database";
 import { ensureAccountRecords } from "@/lib/account-repair";
 import { IS_DEMO, demoBookings, demoShop } from "@/lib/demo-data";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import BarberDashboardClient from "./barber-dashboard-client";
 import ClientDashboardClient from "./client-dashboard-client";
 import DashboardClient from "./dashboard-client";
@@ -46,22 +46,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const account = await ensureAccountRecords(user);
   const typedProfile = account.profile as Profile | null;
+  const admin = await createAdminClient();
 
   if (typedProfile?.role === "client") {
     const client = account.client as Client | null;
     if (!client) redirect("/");
 
     const [{ data: shopsRaw }, { data: favShops }, { data: favBarbers }, { data: bookingsRaw }] = await Promise.all([
-      supabase
+      admin
         .from("shops")
         .select("*, barbers(id, display_name, rating), services(*)")
         .eq("is_active", true)
         .order("city")
         .order("name")
         .limit(40),
-      supabase.from("favorite_shops").select("shop_id").eq("client_id", client.id),
-      supabase.from("favorite_barbers").select("barber_id").eq("client_id", client.id),
-      supabase
+      admin.from("favorite_shops").select("shop_id").eq("client_id", client.id),
+      admin.from("favorite_barbers").select("barber_id").eq("client_id", client.id),
+      admin
         .from("bookings")
         .select("*, shops(name, slug), barbers(display_name), services(name, price, currency), reviews(id)")
         .eq("client_id", client.id)
@@ -92,7 +93,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   }
 
   if (typedProfile?.role === "barber") {
-    const { data: barberData } = await supabase
+    const { data: barberData } = await admin
       .from("barbers")
       .select("*, shops(*), barber_services(service_id)")
       .eq("user_id", user.id)
@@ -107,14 +108,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     const weekEnd = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
     const [{ data: todayBookingsRaw }, { data: upcomingBookingsRaw }, { data: servicesRaw }] = await Promise.all([
-      supabase
+      admin
         .from("bookings")
         .select("*, clients(name, phone, whatsapp), shops(name, slug), services(name, price, currency)")
         .eq("barber_id", barber.id)
         .eq("date", today)
         .not("status", "in", '("cancelled","no_show")')
         .order("start_time"),
-      supabase
+      admin
         .from("bookings")
         .select("*, clients(name, phone, whatsapp), shops(name, slug), services(name, price, currency)")
         .eq("barber_id", barber.id)
@@ -124,7 +125,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         .order("date")
         .order("start_time"),
       barber.barber_services?.length
-        ? supabase.from("services").select("*").in("id", barber.barber_services.map((item) => item.service_id))
+        ? admin.from("services").select("*").in("id", barber.barber_services.map((item) => item.service_id))
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -143,7 +144,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     );
   }
 
-  const { data: shopData } = await supabase.from("shops").select("*").eq("owner_id", user.id).single();
+  const { data: shopData } = await admin.from("shops").select("*").eq("owner_id", user.id).single();
   const shop = shopData as Shop | null;
   if (!shop) redirect("/onboarding");
 
@@ -152,14 +153,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const [{ data: todayBookingsRaw }, { data: bookingsRaw }, { count: totalBookings }, { count: pendingBookings }, { data: weekBookingsRaw }] =
     await Promise.all([
-      supabase
+      admin
         .from("bookings")
         .select("*, clients(name, phone, whatsapp), barbers(display_name), services(name, duration_min, price)")
         .eq("shop_id", shop.id)
         .eq("date", today)
         .not("status", "in", '("cancelled","no_show")')
         .order("start_time"),
-      supabase
+      admin
         .from("bookings")
         .select("*, clients(name, phone, whatsapp), barbers(display_name), services(name, duration_min, price)")
         .eq("shop_id", shop.id)
@@ -168,9 +169,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         .order("date")
         .order("start_time")
         .limit(100),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("shop_id", shop.id).eq("status", "completed"),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("shop_id", shop.id).eq("status", "confirmed").gte("date", today),
-      supabase
+      admin.from("bookings").select("*", { count: "exact", head: true }).eq("shop_id", shop.id).eq("status", "completed"),
+      admin.from("bookings").select("*", { count: "exact", head: true }).eq("shop_id", shop.id).eq("status", "confirmed").gte("date", today),
+      admin
         .from("bookings")
         .select("date, services(price)")
         .eq("shop_id", shop.id)
@@ -191,12 +192,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
 
   const [{ data: services }, { data: barbers }, { data: clients }, { data: notificationEvents }] = await Promise.all([
-    supabase.from("services").select("*").eq("shop_id", shop.id).order("sort_order").order("name"),
-    supabase.from("barbers").select("*, barber_services(service_id)").eq("shop_id", shop.id).order("display_name"),
+    admin.from("services").select("*").eq("shop_id", shop.id).order("sort_order").order("name"),
+    admin.from("barbers").select("*, barber_services(service_id)").eq("shop_id", shop.id).order("display_name"),
     clientIds.length
-      ? supabase.from("clients").select("id,name,phone,whatsapp,city,country_name").in("id", clientIds).limit(100)
+      ? admin.from("clients").select("id,name,phone,whatsapp,city,country_name").in("id", clientIds).limit(100)
       : Promise.resolve({ data: [] }),
-    supabase.from("notification_events").select("*").eq("shop_id", shop.id).order("created_at", { ascending: false }).limit(20),
+    admin.from("notification_events").select("*").eq("shop_id", shop.id).order("created_at", { ascending: false }).limit(20),
   ]);
 
   return (

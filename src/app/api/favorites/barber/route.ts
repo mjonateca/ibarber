@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthenticatedContext } from "@/lib/server-authz";
+import { createAdminClient } from "@/lib/supabase/server";
 
 const schema = z.object({ barber_id: z.string().uuid() });
 
@@ -18,8 +19,9 @@ export async function POST(request: Request) {
 
   const client = await getClient(context);
   if (!client) return NextResponse.json({ error: "Perfil de cliente no encontrado" }, { status: 404 });
+  const admin = await createAdminClient();
 
-  const { error } = await context.supabase
+  const { error } = await admin
     .from("favorite_barbers")
     .upsert({ client_id: client.id, barber_id: parsed.data.barber_id });
 
@@ -36,8 +38,9 @@ export async function DELETE(request: Request) {
 
   const client = await getClient(context);
   if (!client) return NextResponse.json({ error: "Perfil de cliente no encontrado" }, { status: 404 });
+  const admin = await createAdminClient();
 
-  const { error } = await context.supabase
+  const { error } = await admin
     .from("favorite_barbers")
     .delete()
     .eq("client_id", client.id)
