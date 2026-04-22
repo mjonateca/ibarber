@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { ensureAccountRecords } from "@/lib/account-repair";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DEMO, demoShop, demoBarbers, demoServices } from "@/lib/demo-data";
 import type { Metadata } from "next";
@@ -52,12 +53,8 @@ export default async function ShopPage({ params }: Props) {
 
   let viewerRole: AccountRole | null = null;
   if (auth.user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("user_id", auth.user.id)
-      .maybeSingle();
-    viewerRole = (profile?.role as AccountRole | undefined) || null;
+    const account = await ensureAccountRecords(auth.user);
+    viewerRole = account.role;
   }
 
   return <ShopPublicView shop={shop} viewerRole={viewerRole} />;

@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { ensureAccountRecords } from "@/lib/account-repair";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { IS_DEMO, demoShop, demoBarbers, demoServices, demoClient } from "@/lib/demo-data";
 import type { AccountRole } from "@/types/database";
@@ -48,29 +49,22 @@ export default async function ReservarPage({ params, searchParams }: Props) {
     redirect(`/login?redirect=${encodeURIComponent(bookingPath)}`);
   }
 
-  const admin = await createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role, first_name, last_name, phone, country_code, country_name, city")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const account = await ensureAccountRecords(user);
+  const profile = account.profile;
 
-  if (profile?.role !== "client") {
+  if (account.role !== "client") {
     return (
       <BookingRoleNotice
-        role={(profile?.role as AccountRole | undefined) || "shop_owner"}
+        role={account.role as AccountRole}
         shopSlug={slug}
       />
     );
   }
 
-  let { data: client } = await admin
-    .from("clients")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  let client = account.client;
 
   if (!client) {
+    const admin = await createAdminClient();
     const fullName =
       `${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
       user.user_metadata?.full_name ||

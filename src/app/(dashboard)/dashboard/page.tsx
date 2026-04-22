@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ensureAccountRecords } from "@/lib/account-repair";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -35,21 +36,10 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
-
-  const typedProfile = profile as Profile | null;
+  const account = await ensureAccountRecords(user);
+  const typedProfile = account.profile as Profile | null;
   if (typedProfile?.role === "client") {
-    const { data: clientData } = await supabase
-      .from("clients")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    const client = clientData as Client | null;
+    const client = account.client as Client | null;
     if (!client) redirect("/");
 
     const [{ data: shopsRaw }, { data: favShops }, { data: favBarbers }, { data: bookingsRaw }] =

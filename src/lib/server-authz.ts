@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { ensureAccountRecords } from "@/lib/account-repair";
 
 export async function getAuthenticatedContext() {
   const supabase = await createClient();
@@ -11,11 +12,13 @@ export async function getAuthenticatedContext() {
     return {
       supabase,
       user: null,
+      account: null,
       response: NextResponse.json({ error: "No autorizado" }, { status: 401 }),
     };
   }
 
-  return { supabase, user, response: null };
+  const account = await ensureAccountRecords(user);
+  return { supabase, user, account, response: null };
 }
 
 export async function requireOwnedShop(shopId?: string | null) {

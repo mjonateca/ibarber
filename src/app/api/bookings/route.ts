@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureAccountRecords } from "@/lib/account-repair";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -25,24 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const account = await ensureAccountRecords(user);
 
-  if (profile?.role !== "client") {
+  if (account.role !== "client") {
     return NextResponse.json(
       { error: "Solo una cuenta cliente puede crear reservas" },
       { status: 403 }
     );
   }
 
-  const { data: client } = await admin
-    .from("clients")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const client = account.client;
 
   if (!client) {
     return NextResponse.json({ error: "Perfil de cliente no encontrado" }, { status: 404 });

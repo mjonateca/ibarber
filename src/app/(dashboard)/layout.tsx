@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ensureAccountRecords } from "@/lib/account-repair";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DEMO } from "@/lib/demo-data";
 import DashboardNav from "@/components/layout/dashboard-nav";
@@ -16,12 +17,8 @@ export default async function DashboardLayout({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect("/login");
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-    role = (profile?.role as AccountRole | undefined) || "shop_owner";
+    const account = await ensureAccountRecords(user);
+    role = account.role;
   }
 
   return (

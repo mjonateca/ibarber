@@ -18,11 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { data: client } = await context.supabase
-    .from("clients")
-    .select("id")
-    .eq("user_id", context.user.id)
-    .single();
+  const client = context.account?.role === "client" ? context.account.client : null;
 
   if (!client) return NextResponse.json({ error: "Perfil de cliente no encontrado" }, { status: 404 });
 

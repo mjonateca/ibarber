@@ -5,13 +5,8 @@ import { getAuthenticatedContext } from "@/lib/server-authz";
 const schema = z.object({ barber_id: z.string().uuid() });
 
 async function getClient(context: Awaited<ReturnType<typeof getAuthenticatedContext>>) {
-  if (!context.user) return null;
-  const { data } = await context.supabase
-    .from("clients")
-    .select("id")
-    .eq("user_id", context.user.id)
-    .single();
-  return data;
+  if (!context.user || context.account?.role !== "client") return null;
+  return context.account.client;
 }
 
 export async function POST(request: Request) {
