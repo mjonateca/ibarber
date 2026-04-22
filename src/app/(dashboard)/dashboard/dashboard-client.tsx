@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import type { InputHTMLAttributes } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   CalendarDays,
@@ -15,13 +16,13 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { formatCurrency, formatTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
+import { formatCurrency, formatTime } from "@/lib/utils";
 import type { Barber, BookingStatus, NotificationEvent, Service, Shop } from "@/types/database";
 
 export interface BookingWithRelations {
@@ -46,15 +47,19 @@ type ClientSummary = {
   country_name?: string | null;
 };
 
+type OpeningHoursValue = Record<string, { open: string; close: string; closed: boolean }>;
+
 interface Props {
   shop: Shop;
   todayBookings: BookingWithRelations[];
+  bookings: BookingWithRelations[];
   services: Service[];
   barbers: BarberWithServices[];
   clients: ClientSummary[];
   notificationEvents: NotificationEvent[];
   stats: { totalCompleted: number; upcomingConfirmed: number; expectedToday: number; expectedWeek: number };
   todayStr: string;
+  initialTab?: string;
 }
 
 const tabs = [
@@ -79,21 +84,97 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   cancelled: "Cancelada",
 };
 
+const WEEK_DAYS = [
+  { key: "lunes", label: "Lunes" },
+  { key: "martes", label: "Martes" },
+  { key: "miercoles", label: "Miércoles" },
+  { key: "jueves", label: "Jueves" },
+  { key: "viernes", label: "Viernes" },
+  { key: "sabado", label: "Sábado" },
+  { key: "domingo", label: "Domingo" },
+] as const;
+
+function defaultOpeningHours(): OpeningHoursValue {
+  return {
+    lunes: { open: "09:00", close: "19:00", closed: false },
+    martes: { open: "09:00", close: "19:00", closed: false },
+    miercoles: { open: "09:00", close: "19:00", closed: false },
+    jueves: { open: "09:00", close: "19:00", closed: false },
+    viernes: { open: "09:00", close: "19:00", closed: false },
+    sabado: { open: "09:00", close: "17:00", closed: false },
+    domingo: { open: "09:00", close: "13:00", closed: true },
+  };
+}
+
+function normalizeOpeningHours(value: Shop["opening_hours"]): OpeningHoursValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return defaultOpeningHours();
+  }
+
+  const fallback = defaultOpeningHours();
+  const raw = value as Record<string, unknown>;
+  const normalized: OpeningHoursValue = { ...fallback };
+
+  for (const day of WEEK_DAYS) {
+    const current = raw[day.key];
+    if (current && typeof current === "object" && !Array.isArray(current)) {
+      const dayValue = current as Record<string, unknown>;
+      normalized[day.key] = {
+        open: typeof dayValue.open === "string" ? dayValue.open : fallback[day.key].open,
+        close: typeof dayValue.close === "string" ? dayValue.close : fallback[day.key].close,
+        closed: typeof dayValue.closed === "boolean" ? dayValue.closed : fallback[day.key].closed,
+      };
+    }
+  }
+
+  return normalized;
+}
+
 export default function DashboardClient({
   shop,
   todayBookings,
+  bookings: initialBookings,
   services: initialServices,
   barbers: initialBarbers,
   clients,
   notificationEvents,
   stats,
   todayStr,
+  initialTab = "summary",
 }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("summary");
-  const [bookings, setBookings] = useState(todayBookings);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = (searchParams.get("tab") || initialTab) as TabId;
+  const [bookings, setBookings] = useState(initialBookings);
   const [services, setServices] = useState(initialServices);
   const [barbers, setBarbers] = useState(initialBarbers);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [shopState, setShopState] = useState(shop);
+  const [openingHours, setOpeningHours] = useState<OpeningHoursValue>(() => normalizeOpeningHours(shop.opening_hours));
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
+  const clientItems = useMemo(
+    () =>
+      clients.map((client) => ({
+        title: client.name,
+        detail: `${client.phone || client.whatsapp || "Sin teléfono"}${client.city ? ` · ${client.city}` : ""}`,
+      })),
+    [clients]
+  );
+
+  function goToTab(tab: TabId) {
+    router.push(`/dashboard?tab=${tab}`);
+  }
+
+  function updateDay(day: keyof OpeningHoursValue, field: "open" | "close" | "closed", value: string | boolean) {
+    setOpeningHours((current) => ({
+      ...current,
+      [day]: {
+        ...current[day],
+        [field]: value,
+      },
+    }));
+  }
 
   async function updateBooking(bookingId: string, status: BookingStatus) {
     setUpdatingId(bookingId);
@@ -107,7 +188,7 @@ export default function DashboardClient({
       const payload = await response.json().catch(() => ({ error: "Error" }));
       toast({ variant: "destructive", title: "Error", description: payload.error });
     } else {
-      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)));
+      setBookings((prev) => prev.map((booking) => (booking.id === bookingId ? { ...booking, status } : booking)));
       toast({ title: "Reserva actualizada", description: STATUS_LABELS[status] });
     }
 
@@ -121,7 +202,7 @@ export default function DashboardClient({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        shop_id: shop.id,
+        shop_id: shopState.id,
         name: form.get("name"),
         category: form.get("category"),
         description: form.get("description"),
@@ -148,9 +229,7 @@ export default function DashboardClient({
     if (!response.ok) return;
     setServices((prev) =>
       prev.map((item) =>
-        item.id === service.id
-          ? { ...item, is_active: !item.is_active, is_visible: !item.is_active }
-          : item
+        item.id === service.id ? { ...item, is_active: !item.is_active, is_visible: !item.is_active } : item
       )
     );
   }
@@ -163,7 +242,7 @@ export default function DashboardClient({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        shop_id: shop.id,
+        shop_id: shopState.id,
         display_name: form.get("display_name"),
         specialty: form.get("specialty"),
         bio: form.get("bio"),
@@ -187,44 +266,85 @@ export default function DashboardClient({
       body: JSON.stringify({ is_active: !barber.is_active }),
     });
     if (!response.ok) return;
-    setBarbers((prev) =>
-      prev.map((item) => (item.id === barber.id ? { ...item, is_active: !item.is_active } : item))
-    );
+    setBarbers((prev) => prev.map((item) => (item.id === barber.id ? { ...item, is_active: !item.is_active } : item)));
+  }
+
+  async function saveSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingSchedule(true);
+
+    const invalidDay = WEEK_DAYS.find(({ key }) => {
+      const day = openingHours[key];
+      return !day.closed && day.open >= day.close;
+    });
+
+    if (invalidDay) {
+      toast({
+        variant: "destructive",
+        title: "Horario inválido",
+        description: `Revisa ${invalidDay.label}: la hora de apertura debe ser menor que la de cierre.`,
+      });
+      setSavingSchedule(false);
+      return;
+    }
+
+    const response = await fetch("/api/dashboard/shop", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ opening_hours: openingHours }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    setSavingSchedule(false);
+
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "No se guardó el horario", description: payload.error || "Error inesperado" });
+      return;
+    }
+
+    setShopState(payload);
+    toast({ title: "Horario actualizado" });
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl">
+    <div className="max-w-6xl p-4 md:p-8">
       <div className="mb-7 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{shop.name}</h1>
+          <h1 className="text-2xl font-bold">{shopState.name}</h1>
           <p className="text-muted-foreground capitalize">
-            {shop.city ? `${shop.city} · ` : ""}
+            {shopState.city ? `${shopState.city} · ` : ""}
             {todayStr}
           </p>
         </div>
-        <Link href={`/${shop.slug}`} target="_blank" className="text-sm text-primary font-medium hover:underline">
-          Ver página pública <ExternalLink className="inline h-3.5 w-3.5" />
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/">Inicio</Link>
+          </Button>
+          <Link href={`/${shopState.slug}`} target="_blank" className="text-sm font-medium text-primary hover:underline">
+            Ver página pública <ExternalLink className="inline h-3.5 w-3.5" />
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`h-10 px-3 rounded-lg border text-sm font-medium whitespace-nowrap ${
-              activeTab === tab.id ? "bg-primary text-white border-primary" : "bg-background"
+            type="button"
+            onClick={() => goToTab(tab.id)}
+            className={`h-10 rounded-lg border px-3 text-sm font-medium whitespace-nowrap ${
+              currentTab === tab.id ? "border-primary bg-primary text-white" : "bg-background"
             }`}
           >
-            <tab.icon className="inline h-4 w-4 mr-1.5" />
+            <tab.icon className="mr-1.5 inline h-4 w-4" />
             {tab.label}
           </button>
         ))}
       </div>
 
-      {activeTab === "summary" && (
+      {currentTab === "summary" && (
         <div className="grid gap-4 md:grid-cols-3">
-          <Metric title="Citas hoy" value={bookings.length} icon={Clock} />
+          <Metric title="Citas hoy" value={todayBookings.length} icon={Clock} />
           <Metric title="Completadas" value={stats.totalCompleted} icon={CheckCircle} />
           <Metric title="Próximas confirmadas" value={stats.upcomingConfirmed} icon={Users} />
           <Metric title="Estimado hoy" value={formatCurrency(stats.expectedToday)} icon={Scissors} />
@@ -232,43 +352,53 @@ export default function DashboardClient({
         </div>
       )}
 
-      {activeTab === "bookings" && (
+      {currentTab === "bookings" && (
         <Card className="shadow-none">
           <CardHeader>
-            <CardTitle>Reservas</CardTitle>
+            <CardTitle>Reservas próximas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {bookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay citas para hoy.</p>
-            ) : bookings.map((booking) => (
-              <div key={booking.id} className="rounded-xl border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="font-medium">{booking.clients?.name || "Cliente"}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatTime(booking.start_time.slice(0, 5))} · {booking.services?.name} · {booking.barbers?.display_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
+              <p className="text-sm text-muted-foreground">No hay reservas próximas.</p>
+            ) : (
+              bookings.map((booking) => (
+                <div key={booking.id} className="flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium">{booking.clients?.name || "Cliente"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {booking.date} · {formatTime(booking.start_time.slice(0, 5))} · {booking.services?.name} · {booking.barbers?.display_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(["confirmed", "completed", "cancelled"] as BookingStatus[]).map((status) => (
+                      <Button
+                        key={status}
+                        size="sm"
+                        variant="outline"
+                        disabled={updatingId === booking.id}
+                        onClick={() => updateBooking(booking.id, status)}
+                      >
+                        {updatingId === booking.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : STATUS_LABELS[status]}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {(["confirmed", "completed", "cancelled"] as BookingStatus[]).map((status) => (
-                    <Button key={status} size="sm" variant="outline" disabled={updatingId === booking.id} onClick={() => updateBooking(booking.id, status)}>
-                      {updatingId === booking.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : STATUS_LABELS[status]}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
       )}
 
-      {activeTab === "services" && (
+      {currentTab === "services" && (
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <Card className="shadow-none">
-            <CardHeader><CardTitle>Servicios</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Servicios</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
               {services.map((service) => (
-                <div key={service.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                <div key={service.id} className="flex items-center justify-between gap-3 rounded-xl border p-4">
                   <div>
                     <p className="font-medium">{service.name}</p>
                     <p className="text-sm text-muted-foreground">
@@ -286,19 +416,19 @@ export default function DashboardClient({
         </div>
       )}
 
-      {activeTab === "barbers" && (
+      {currentTab === "barbers" && (
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <Card className="shadow-none">
-            <CardHeader><CardTitle>Barberos</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Barberos</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
               {barbers.map((barber) => (
-                <div key={barber.id} className="rounded-xl border p-4 flex items-center justify-between gap-3">
+                <div key={barber.id} className="flex items-center justify-between gap-3 rounded-xl border p-4">
                   <div>
                     <p className="font-medium">{barber.display_name}</p>
                     <p className="text-sm text-muted-foreground">{barber.specialty || "Sin especialidad"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {barber.barber_services?.length || 0} servicios asignados
-                    </p>
+                    <p className="text-xs text-muted-foreground">{barber.barber_services?.length || 0} servicios asignados</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => toggleBarber(barber)}>
                     {barber.is_active ? "Desactivar" : "Activar"}
@@ -311,25 +441,59 @@ export default function DashboardClient({
         </div>
       )}
 
-      {activeTab === "clients" && (
-        <SimpleList title="Clientes" empty="Aún no hay clientes con reservas." items={clients.map((client) => ({
-          title: client.name,
-          detail: `${client.phone || client.whatsapp || "Sin teléfono"}${client.city ? ` · ${client.city}` : ""}`,
-        }))} />
+      {currentTab === "clients" && (
+        <SimpleList title="Clientes" empty="Aún no hay clientes con reservas." items={clientItems} />
       )}
 
-      {activeTab === "schedule" && (
-        <SimpleList
-          title="Horarios"
-          empty="Configura horarios por barbero en la próxima iteración."
-          items={barbers.map((barber) => ({
-            title: barber.display_name,
-            detail: "Disponible para reglas semanales, bloqueos y excepciones.",
-          }))}
-        />
+      {currentTab === "schedule" && (
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle>Horario de funcionamiento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={saveSchedule} className="space-y-4">
+              {WEEK_DAYS.map(({ key, label }) => (
+                <div key={key} className="grid gap-3 rounded-xl border p-4 md:grid-cols-[160px_1fr_1fr_auto] md:items-center">
+                  <div className="font-medium">{label}</div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${key}-open`}>Abre</Label>
+                    <Input
+                      id={`${key}-open`}
+                      type="time"
+                      value={openingHours[key].open}
+                      onChange={(event) => updateDay(key, "open", event.target.value)}
+                      disabled={openingHours[key].closed}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${key}-close`}>Cierra</Label>
+                    <Input
+                      id={`${key}-close`}
+                      type="time"
+                      value={openingHours[key].close}
+                      onChange={(event) => updateDay(key, "close", event.target.value)}
+                      disabled={openingHours[key].closed}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={openingHours[key].closed}
+                      onChange={(event) => updateDay(key, "closed", event.target.checked)}
+                    />
+                    Cerrado
+                  </label>
+                </div>
+              ))}
+              <Button type="submit" disabled={savingSchedule}>
+                {savingSchedule ? "Guardando..." : "Guardar horario"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
-      {activeTab === "whatsapp" && (
+      {currentTab === "whatsapp" && (
         <SimpleList
           title="WhatsApp / Notificaciones"
           empty="No hay notificaciones en cola."
@@ -340,14 +504,18 @@ export default function DashboardClient({
         />
       )}
 
-      {activeTab === "settings" && (
+      {currentTab === "settings" && (
         <Card className="shadow-none">
-          <CardHeader><CardTitle>Ajustes</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Ajustes</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>{shop.name}</p>
-            <p>{shop.address}</p>
-            <p>{shop.city} · {shop.country_name}</p>
-            <p>{shop.description || "Sin descripción pública."}</p>
+            <p>{shopState.name}</p>
+            <p>{shopState.address}</p>
+            <p>
+              {shopState.city} · {shopState.country_name}
+            </p>
+            <p>{shopState.description || "Sin descripción pública."}</p>
           </CardContent>
         </Card>
       )}
@@ -360,8 +528,8 @@ export default function DashboardClient({
 function Metric({ title, value, icon: Icon }: { title: string; value: number | string; icon: typeof Clock }) {
   return (
     <Card className="shadow-none">
-      <CardContent className="p-4 flex items-center gap-3">
-        <div className="bg-primary/10 rounded-xl p-2.5">
+      <CardContent className="flex items-center gap-3 p-4">
+        <div className="rounded-xl bg-primary/10 p-2.5">
           <Icon className="h-5 w-5 text-primary" />
         </div>
         <div>
@@ -376,7 +544,9 @@ function Metric({ title, value, icon: Icon }: { title: string; value: number | s
 function CreateServiceForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
     <Card className="shadow-none">
-      <CardHeader><CardTitle>Nuevo servicio</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Nuevo servicio</CardTitle>
+      </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-3">
           <Field name="name" label="Nombre" required />
@@ -387,7 +557,9 @@ function CreateServiceForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormE
             <Label htmlFor="description">Descripción</Label>
             <textarea id="description" name="description" className="min-h-[76px] w-full rounded-xl border bg-background px-3 py-2 text-sm" />
           </div>
-          <Button type="submit" className="w-full">Crear servicio</Button>
+          <Button type="submit" className="w-full">
+            Crear servicio
+          </Button>
         </form>
       </CardContent>
     </Card>
@@ -397,7 +569,9 @@ function CreateServiceForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormE
 function CreateBarberForm({ services, onSubmit }: { services: Service[]; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
     <Card className="shadow-none">
-      <CardHeader><CardTitle>Nuevo barbero</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Nuevo barbero</CardTitle>
+      </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-3">
           <Field name="display_name" label="Nombre público" required />
@@ -417,7 +591,9 @@ function CreateBarberForm({ services, onSubmit }: { services: Service[]; onSubmi
               ))}
             </div>
           </div>
-          <Button type="submit" className="w-full">Crear barbero</Button>
+          <Button type="submit" className="w-full">
+            Crear barbero
+          </Button>
         </form>
       </CardContent>
     </Card>
@@ -436,14 +612,20 @@ function Field({ label, ...props }: { label: string } & InputHTMLAttributes<HTML
 function SimpleList({ title, empty, items }: { title: string; empty: string; items: Array<{ title: string; detail: string }> }) {
   return (
     <Card className="shadow-none">
-      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
       <CardContent className="space-y-3">
-        {items.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : items.map((item, index) => (
-          <div key={`${item.title}-${index}`} className="rounded-xl border p-4">
-            <p className="font-medium">{item.title}</p>
-            <p className="text-sm text-muted-foreground">{item.detail}</p>
-          </div>
-        ))}
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{empty}</p>
+        ) : (
+          items.map((item, index) => (
+            <div key={`${item.title}-${index}`} className="rounded-xl border p-4">
+              <p className="font-medium">{item.title}</p>
+              <p className="text-sm text-muted-foreground">{item.detail}</p>
+            </div>
+          ))
+        )}
       </CardContent>
     </Card>
   );

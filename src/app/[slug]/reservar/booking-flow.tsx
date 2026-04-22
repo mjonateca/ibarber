@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { format, addDays, startOfDay } from "date-fns";
-import { es } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, Clock, Loader2, Scissors, UserRound } from "lucide-react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { formatCurrency, formatTime } from "@/lib/utils";
+import { addDays, format, startOfDay } from "date-fns";
+import { es } from "date-fns/locale";
+import { ArrowLeft, CheckCircle2, Clock, Home, Loader2, Scissors, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import type { Shop, Barber, Service, Client } from "@/types/database";
+import { formatCurrency, formatTime } from "@/lib/utils";
+import type { Barber, Client, Service, Shop } from "@/types/database";
 
 interface ShopWithRelations extends Shop {
   barbers: Array<Barber & { barber_services?: Array<{ service_id: string }> }>;
@@ -25,12 +25,7 @@ interface Props {
 
 type Step = "barber" | "service" | "datetime" | "confirm" | "success";
 type BookedInterval = { start: string; end: string };
-
-const TIME_SLOTS = [
-  "09:00","09:30","10:00","10:30","11:00","11:30",
-  "12:00","12:30","13:00","14:00","14:30","15:00",
-  "15:30","16:00","16:30","17:00","17:30","18:00","18:30",
-];
+type OpeningHoursValue = Record<string, { open: string; close: string; closed: boolean }>;
 
 function generateDates(days = 14): Date[] {
   return Array.from({ length: days }, (_, i) => addDays(startOfDay(new Date()), i));
@@ -41,21 +36,78 @@ function timeToMinutes(value: string) {
   return hours * 60 + minutes;
 }
 
+function minutesToTime(total: number) {
+  const hours = Math.floor(total / 60)
+    .toString()
+    .padStart(2, "0");
+  const minutes = (total % 60).toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 function intervalsOverlap(start: string, end: string, booked: BookedInterval) {
-  return timeToMinutes(start) < timeToMinutes(booked.end) &&
-    timeToMinutes(end) > timeToMinutes(booked.start);
+  return timeToMinutes(start) < timeToMinutes(booked.end) && timeToMinutes(end) > timeToMinutes(booked.start);
+}
+
+function defaultOpeningHours(): OpeningHoursValue {
+  return {
+    lunes: { open: "09:00", close: "19:00", closed: false },
+    martes: { open: "09:00", close: "19:00", closed: false },
+    miercoles: { open: "09:00", close: "19:00", closed: false },
+    jueves: { open: "09:00", close: "19:00", closed: false },
+    viernes: { open: "09:00", close: "19:00", closed: false },
+    sabado: { open: "09:00", close: "17:00", closed: false },
+    domingo: { open: "09:00", close: "13:00", closed: true },
+  };
+}
+
+function normalizeOpeningHours(value: Shop["opening_hours"]): OpeningHoursValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaultOpeningHours();
+
+  const fallback = defaultOpeningHours();
+  const raw = value as Record<string, unknown>;
+  const normalized: OpeningHoursValue = { ...fallback };
+
+  for (const key of Object.keys(fallback)) {
+    const current = raw[key];
+    if (current && typeof current === "object" && !Array.isArray(current)) {
+      const day = current as Record<string, unknown>;
+      normalized[key] = {
+        open: typeof day.open === "string" ? day.open : fallback[key].open,
+        close: typeof day.close === "string" ? day.close : fallback[key].close,
+        closed: typeof day.closed === "boolean" ? day.closed : fallback[key].closed,
+      };
+    }
+  }
+
+  return normalized;
+}
+
+function weekdayKey(date: Date) {
+  return ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"][date.getDay()];
+}
+
+function buildSlots(date: Date, openingHours: OpeningHoursValue, duration = 30) {
+  const dayConfig = openingHours[weekdayKey(date)];
+  if (!dayConfig || dayConfig.closed) return [];
+
+  const start = timeToMinutes(dayConfig.open);
+  const end = timeToMinutes(dayConfig.close);
+  const slots: string[] = [];
+
+  for (let minute = start; minute + duration <= end; minute += 30) {
+    slots.push(minutesToTime(minute));
+  }
+
+  return slots;
 }
 
 export default function BookingFlow({ shop, client, preselectedBarberId }: Props) {
   const activeBarbers = shop.barbers.filter((barber) => barber.is_active !== false);
-  const preselectedBarber = preselectedBarberId
-    ? activeBarbers.find((barber) => barber.id === preselectedBarberId) || null
-    : null;
+  const openingHours = useMemo(() => normalizeOpeningHours(shop.opening_hours), [shop.opening_hours]);
+  const preselectedBarber = preselectedBarberId ? activeBarbers.find((barber) => barber.id === preselectedBarberId) || null : null;
 
   const [step, setStep] = useState<Step>(preselectedBarber ? "service" : "barber");
-  const [selectedBarber, setSelectedBarber] = useState<ShopWithRelations["barbers"][number] | null>(
-    preselectedBarber
-  );
+  const [selectedBarber, setSelectedBarber] = useState<ShopWithRelations["barbers"][number] | null>(preselectedBarber);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -63,16 +115,13 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const compatibleServiceIds = new Set(
-    selectedBarber?.barber_services?.map((item: { service_id: string }) => item.service_id) || []
-  );
+  const compatibleServiceIds = new Set(selectedBarber?.barber_services?.map((item) => item.service_id) || []);
   const activeServices = shop.services.filter(
-    (s) =>
-      s.is_active &&
-      s.is_visible !== false &&
-      (!selectedBarber || compatibleServiceIds.size === 0 || compatibleServiceIds.has(s.id))
+    (service) => service.is_active && service.is_visible !== false && (!selectedBarber || compatibleServiceIds.size === 0 || compatibleServiceIds.has(service.id))
   );
   const dates = generateDates(14);
+  const availableSlots = selectedDate ? buildSlots(selectedDate, openingHours, selectedService?.duration_min || 30) : [];
+  const selectedDayConfig = selectedDate ? openingHours[weekdayKey(selectedDate)] : null;
 
   async function loadBookedSlots(barberId: string, date: Date) {
     setLoadingSlots(true);
@@ -100,19 +149,17 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
     if (!selectedBarber || !selectedService || !selectedDate || !selectedTime) return;
     setSubmitting(true);
 
-    // Modo demo: simular guardado
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.startsWith("http")) {
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
       setStep("success");
       setSubmitting(false);
       return;
     }
 
     const dateStr = format(selectedDate, "yyyy-MM-dd");
-    const [h, m] = selectedTime.split(":").map(Number);
-    const endH = Math.floor((h * 60 + m + selectedService.duration_min) / 60);
-    const endM = (h * 60 + m + selectedService.duration_min) % 60;
-    const endTime = `${endH.toString().padStart(2, "0")}:${endM.toString().padStart(2, "0")}`;
+    const [hours, minutes] = selectedTime.split(":").map(Number);
+    const endTotal = hours * 60 + minutes + selectedService.duration_min;
+    const endTime = minutesToTime(endTotal);
 
     try {
       const response = await fetch("/api/bookings", {
@@ -123,8 +170,8 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
           shop_id: shop.id,
           service_id: selectedService.id,
           date: dateStr,
-          start_time: selectedTime + ":00",
-          end_time: endTime + ":00",
+          start_time: `${selectedTime}:00`,
+          end_time: `${endTime}:00`,
         }),
       });
 
@@ -159,23 +206,22 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
           <CheckCircle2 className="h-11 w-11" />
         </div>
-        <h1 className="text-2xl font-bold mb-2">¡Reserva confirmada!</h1>
-        <p className="text-muted-foreground mb-2">
-          <strong>{selectedService?.name}</strong> con{" "}
-          <strong>{selectedBarber?.display_name}</strong>
+        <h1 className="mb-2 text-2xl font-bold">¡Reserva confirmada!</h1>
+        <p className="mb-2 text-muted-foreground">
+          <strong>{selectedService?.name}</strong> con <strong>{selectedBarber?.display_name}</strong>
         </p>
-        <p className="text-muted-foreground mb-8">
-          {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}{" "}
-          a las {selectedTime && formatTime(selectedTime)}
+        <p className="mb-8 text-muted-foreground">
+          {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })} a las {selectedTime && formatTime(selectedTime)}
         </p>
-        <div className="flex flex-col gap-3 w-full max-w-xs">
+        <div className="flex w-full max-w-xs flex-col gap-3">
           <Button asChild variant="outline" className="w-full">
-            <Link href={`/${shop.slug}`}>
-              Volver a {shop.name}
-            </Link>
+            <Link href="/">Volver a inicio</Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full">
+            <Link href={`/${shop.slug}`}>Volver a {shop.name}</Link>
           </Button>
           <Button asChild className="w-full">
-            <Link href="/dashboard">Ver mis reservas</Link>
+            <Link href="/dashboard?tab=bookings">Ver mis reservas</Link>
           </Button>
         </div>
         <Toaster />
@@ -189,8 +235,7 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
         <div
           className="absolute inset-0 opacity-28"
           style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1200&q=80')",
+            backgroundImage: "url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1200&q=80')",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
@@ -198,21 +243,31 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
         <div className="relative mx-auto flex max-w-3xl items-center gap-3 px-4 py-5">
           <Button asChild variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white">
             <Link href={`/${shop.slug}`}>
-            <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
           <div className="flex-1">
             <p className="text-sm font-semibold">{shop.name}</p>
             <p className="text-xs text-white/70">
-            {step === "barber" && "Elige tu barbero"}
-            {step === "service" && "Elige el servicio"}
-            {step === "datetime" && "Elige fecha y hora"}
-            {step === "confirm" && "Confirmar reserva"}
+              {step === "barber" && "Elige tu barbero"}
+              {step === "service" && "Elige el servicio"}
+              {step === "datetime" && "Elige fecha y hora"}
+              {step === "confirm" && "Confirmar reserva"}
             </p>
           </div>
-          <div className="hidden text-right text-xs text-white/70 sm:block">
-            <p>Cliente</p>
-            <p className="font-medium text-white">{client.name}</p>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white">
+              <Link href="/">
+                <Home className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Inicio</span>
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white">
+              <Link href="/dashboard?tab=bookings">
+                <span className="hidden sm:inline">Mi panel</span>
+                <span className="sm:hidden">Panel</span>
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -223,15 +278,12 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
             <div
               key={item}
               className={`h-1.5 rounded-full ${
-                ["barber", "service", "datetime", "confirm"].indexOf(step) >= index
-                  ? "bg-primary"
-                  : "bg-border"
+                ["barber", "service", "datetime", "confirm"].indexOf(step) >= index ? "bg-primary" : "bg-border"
               }`}
             />
           ))}
         </div>
 
-        {/* Paso 1: Barbero */}
         {step === "barber" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">¿Con quién quieres tu cita?</h2>
@@ -241,30 +293,33 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {activeBarbers.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => { setSelectedBarber(b); setStep("service"); }}
-                  className="rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary"
-                >
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <UserRound className="h-6 w-6" />
-                  </div>
-                  <p className="font-medium text-sm">{b.display_name}</p>
-                  {b.specialty && <p className="text-xs text-primary mt-1">{b.specialty}</p>}
-                  {b.bio && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{b.bio}</p>}
-                </button>
-              ))}
+                {activeBarbers.map((barber) => (
+                  <button
+                    key={barber.id}
+                    onClick={() => {
+                      setSelectedBarber(barber);
+                      setStep("service");
+                    }}
+                    className="rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary"
+                    type="button"
+                  >
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <UserRound className="h-6 w-6" />
+                    </div>
+                    <p className="text-sm font-medium">{barber.display_name}</p>
+                    {barber.specialty && <p className="mt-1 text-xs text-primary">{barber.specialty}</p>}
+                    {barber.bio && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{barber.bio}</p>}
+                  </button>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Paso 2: Servicio */}
         {step === "service" && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <button onClick={() => setStep("barber")} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setStep("barber")} className="text-muted-foreground hover:text-foreground" type="button">
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <h2 className="text-lg font-semibold">¿Qué servicio quieres?</h2>
@@ -275,94 +330,95 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
                   Este barbero aún no tiene servicios asignados.
                 </p>
               )}
-              {activeServices.map((s) => (
+              {activeServices.map((service) => (
                 <button
-                  key={s.id}
-                  onClick={() => { setSelectedService(s); setSelectedTime(null); }}
-                  className={`w-full rounded-lg border bg-background p-4 text-left flex items-center justify-between transition-all ${
-                    selectedService?.id === s.id
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                      : "hover:border-primary/40"
+                  key={service.id}
+                  onClick={() => {
+                    setSelectedService(service);
+                    setSelectedTime(null);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg border bg-background p-4 text-left transition-all ${
+                    selectedService?.id === service.id ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "hover:border-primary/40"
                   }`}
+                  type="button"
                 >
                   <div>
-                    <p className="font-medium">{s.name}</p>
-                    {s.description && (
-                      <p className="mt-1 max-w-[18rem] text-xs text-muted-foreground line-clamp-2">
-                        {s.description}
-                      </p>
-                    )}
-                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
+                    <p className="font-medium">{service.name}</p>
+                    {service.description && <p className="mt-1 max-w-[18rem] line-clamp-2 text-xs text-muted-foreground">{service.description}</p>}
+                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
-                      {s.duration_min} min
+                      {service.duration_min} min
                     </p>
                   </div>
-                  <p className="font-semibold text-primary">
-                    {formatCurrency(s.price, s.currency)}
-                  </p>
+                  <p className="font-semibold text-primary">{formatCurrency(service.price, service.currency)}</p>
                 </button>
               ))}
             </div>
             {selectedService && (
-              <Button
-                className="w-full"
-                onClick={() => setStep("datetime")}
-              >
+              <Button className="w-full" onClick={() => setStep("datetime")}>
                 Elegir fecha y hora
               </Button>
             )}
           </div>
         )}
 
-        {/* Paso 3: Fecha y hora */}
         {step === "datetime" && (
           <div className="space-y-5">
             <div className="flex items-center gap-2">
-              <button onClick={() => setStep("service")} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setStep("service")} className="text-muted-foreground hover:text-foreground" type="button">
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <h2 className="text-lg font-semibold">Elige fecha</h2>
             </div>
 
-            {/* Selector de fecha horizontal */}
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-              {dates.map((date) => (
-                <button
-                  key={date.toISOString()}
-                  onClick={() => handleDateSelect(date)}
-                  className={`flex-shrink-0 rounded-lg border p-3 text-center min-w-[64px] transition-all ${
-                    selectedDate?.toDateString() === date.toDateString()
-                      ? "border-primary bg-primary text-white"
-                      : "hover:border-primary/40"
-                  }`}
-                >
-                  <p className="text-xs font-medium">
-                    {format(date, "EEE", { locale: es })}
-                  </p>
-                  <p className="text-lg font-bold">{format(date, "d")}</p>
-                  <p className="text-xs">{format(date, "MMM", { locale: es })}</p>
-                </button>
-              ))}
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2">
+              {dates.map((date) => {
+                const closed = openingHours[weekdayKey(date)]?.closed;
+                return (
+                  <button
+                    key={date.toISOString()}
+                    onClick={() => handleDateSelect(date)}
+                    className={`min-w-[64px] flex-shrink-0 rounded-lg border p-3 text-center transition-all ${
+                      selectedDate?.toDateString() === date.toDateString()
+                        ? "border-primary bg-primary text-white"
+                        : closed
+                          ? "cursor-not-allowed opacity-40"
+                          : "hover:border-primary/40"
+                    }`}
+                    disabled={closed}
+                    type="button"
+                  >
+                    <p className="text-xs font-medium">{format(date, "EEE", { locale: es })}</p>
+                    <p className="text-lg font-bold">{format(date, "d")}</p>
+                    <p className="text-xs">{format(date, "MMM", { locale: es })}</p>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Horarios disponibles */}
             {selectedDate && (
               <div>
-                <h3 className="font-medium mb-3">Horarios disponibles</h3>
-                {loadingSlots ? (
+                <h3 className="mb-3 font-medium">Horarios disponibles</h3>
+                {selectedDayConfig?.closed ? (
+                  <p className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">La barbería está cerrada ese día.</p>
+                ) : loadingSlots ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
+                ) : availableSlots.length === 0 ? (
+                  <p className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+                    No hay horarios configurados para este día.
+                  </p>
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
-                    {TIME_SLOTS.map((slot) => {
+                    {availableSlots.map((slot) => {
                       const duration = selectedService?.duration_min || 30;
-                      const slotEndMinutes = timeToMinutes(slot) + duration;
-                      const slotEnd = `${Math.floor(slotEndMinutes / 60).toString().padStart(2, "0")}:${(slotEndMinutes % 60).toString().padStart(2, "0")}`;
+                      const slotEnd = minutesToTime(timeToMinutes(slot) + duration);
                       const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
                       const todayStr = format(new Date(), "yyyy-MM-dd");
                       const inPast = dateStr === todayStr && timeToMinutes(slot) <= timeToMinutes(format(new Date(), "HH:mm"));
                       const taken = inPast || bookedSlots.some((booked) => intervalsOverlap(slot, slotEnd, booked));
+
                       return (
                         <button
                           key={slot}
@@ -370,11 +426,12 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
                           onClick={() => setSelectedTime(slot)}
                           className={`rounded-lg border bg-background py-2.5 text-sm font-medium transition-all ${
                             taken
-                              ? "opacity-30 cursor-not-allowed bg-muted"
+                              ? "cursor-not-allowed bg-muted opacity-30"
                               : selectedTime === slot
-                              ? "border-primary bg-primary text-white"
-                              : "hover:border-primary/40"
+                                ? "border-primary bg-primary text-white"
+                                : "hover:border-primary/40"
                           }`}
+                          type="button"
                         >
                           {formatTime(slot)}
                         </button>
@@ -393,13 +450,12 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
           </div>
         )}
 
-        {/* Paso 4: Confirmar */}
         {step === "confirm" && (
           <div className="space-y-5">
             <h2 className="text-lg font-semibold">Confirmar reserva</h2>
 
             <Card className="border-none">
-              <CardContent className="p-5 space-y-4">
+              <CardContent className="space-y-4 p-5">
                 <div className="flex items-center gap-3 border-b pb-4">
                   <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Scissors className="h-5 w-5" />
@@ -419,46 +475,34 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Fecha</span>
-                  <span className="font-medium">
-                    {selectedDate &&
-                      format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
-                  </span>
+                  <span className="font-medium">{selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Hora</span>
-                  <span className="font-medium">
-                    {selectedTime && formatTime(selectedTime)}
-                  </span>
+                  <span className="font-medium">{selectedTime && formatTime(selectedTime)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Duración</span>
                   <span className="font-medium">{selectedService?.duration_min} min</span>
                 </div>
-                <div className="border-t pt-3 flex justify-between">
+                <div className="flex justify-between border-t pt-3">
                   <span className="font-semibold">Total</span>
-                  <span className="font-bold text-primary text-lg">
-                    {selectedService &&
-                      formatCurrency(selectedService.price, selectedService.currency)}
+                  <span className="text-lg font-bold text-primary">
+                    {selectedService && formatCurrency(selectedService.price, selectedService.currency)}
                   </span>
                 </div>
               </CardContent>
             </Card>
 
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setStep("datetime")}
-                className="flex-1"
-              >
+              <Button variant="outline" onClick={() => setStep("datetime")} className="flex-1">
                 ← Cambiar
               </Button>
-              <Button
-                onClick={handleConfirm}
-                disabled={submitting}
-                className="flex-1"
-              >
+              <Button onClick={handleConfirm} disabled={submitting} className="flex-1">
                 {submitting ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reservando...</>
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reservando...
+                  </>
                 ) : (
                   "Confirmar reserva"
                 )}

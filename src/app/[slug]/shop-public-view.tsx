@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { MapPin, Phone, Star, Clock, Scissors } from "lucide-react";
+import { MapPin, Phone, Star, Clock, Scissors, Home } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +52,19 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
           }}
         />
         <div className="relative mx-auto max-w-3xl px-4 pb-9 pt-10">
+          <div className="mb-6 flex justify-end gap-2">
+            <Button asChild variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+              <Link href="/">
+                <Home className="mr-2 h-4 w-4" />
+                Inicio
+              </Link>
+            </Button>
+            {viewerRole && (
+              <Button asChild variant="outline" className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+                <Link href="/dashboard?tab=summary">Mi panel</Link>
+              </Button>
+            )}
+          </div>
           <div className="flex items-start gap-4">
             {shop.logo_url ? (
               <Image

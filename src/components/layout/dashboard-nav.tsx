@@ -1,41 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Calendar, Settings, Scissors, LogOut, Bell, UserRound, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Bell, Calendar, LayoutDashboard, LogOut, Scissors, Settings, UserRound, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import type { AccountRole } from "@/types/database";
 
-const shopNavItems = [
-  { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
-  { href: "/dashboard", label: "Reservas", icon: Calendar },
-  { href: "/dashboard", label: "Servicios", icon: Scissors },
-  { href: "/dashboard", label: "Barberos", icon: UserRound },
-  { href: "/dashboard", label: "Clientes", icon: Users },
-  { href: "/dashboard", label: "WhatsApp", icon: Bell },
-  { href: "/dashboard", label: "Ajustes", icon: Settings },
+type NavItem = {
+  tab: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+};
+
+const shopNavItems: NavItem[] = [
+  { tab: "summary", label: "Resumen", icon: LayoutDashboard },
+  { tab: "bookings", label: "Reservas", icon: Calendar },
+  { tab: "services", label: "Servicios", icon: Scissors },
+  { tab: "barbers", label: "Barberos", icon: UserRound },
+  { tab: "clients", label: "Clientes", icon: Users },
+  { tab: "schedule", label: "Horarios", icon: Calendar },
+  { tab: "whatsapp", label: "WhatsApp", icon: Bell },
+  { tab: "settings", label: "Ajustes", icon: Settings },
 ];
 
-const clientNavItems = [
-  { href: "/dashboard", label: "Cerca de mí", icon: LayoutDashboard },
-  { href: "/dashboard", label: "Reservas", icon: Calendar },
-  { href: "/dashboard", label: "Favoritos", icon: Bell },
-  { href: "/dashboard", label: "Perfil", icon: UserRound },
+const clientNavItems: NavItem[] = [
+  { tab: "summary", label: "Cerca de mí", icon: LayoutDashboard },
+  { tab: "bookings", label: "Reservas", icon: Calendar },
+  { tab: "favorites", label: "Favoritos", icon: Bell },
+  { tab: "profile", label: "Perfil", icon: UserRound },
 ];
 
-const barberNavItems = [
-  { href: "/dashboard", label: "Hoy", icon: LayoutDashboard },
-  { href: "/dashboard", label: "Turnos", icon: Calendar },
-  { href: "/dashboard", label: "Clientes", icon: Users },
-  { href: "/dashboard", label: "Perfil", icon: UserRound },
+const barberNavItems: NavItem[] = [
+  { tab: "summary", label: "Hoy", icon: LayoutDashboard },
+  { tab: "bookings", label: "Turnos", icon: Calendar },
+  { tab: "clients", label: "Clientes", icon: Users },
+  { tab: "profile", label: "Perfil", icon: UserRound },
 ];
+
+function tabHref(tab: string) {
+  return `/dashboard?tab=${tab}`;
+}
 
 export default function DashboardNav({ role = "shop_owner" }: { role?: AccountRole }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const navItems = role === "client" ? clientNavItems : role === "barber" ? barberNavItems : shopNavItems;
+  const activeTab = searchParams.get("tab") || "summary";
 
   async function handleLogout() {
     const supabase = createClient();
@@ -46,25 +58,24 @@ export default function DashboardNav({ role = "shop_owner" }: { role?: AccountRo
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 border-r bg-background flex-col">
-        <div className="p-6 border-b">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="bg-primary rounded-xl p-2">
+      <aside className="fixed left-0 top-0 hidden h-full w-60 flex-col border-r bg-background md:flex">
+        <div className="border-b p-6">
+          <Link href={tabHref("summary")} className="flex items-center gap-2">
+            <div className="rounded-xl bg-primary p-2">
               <Scissors className="h-5 w-5 text-white" />
             </div>
             <span className="text-lg font-bold">iBarber</span>
           </Link>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 space-y-1 p-4">
           {navItems.map((item) => (
             <Link
-              key={item.href}
-              href={item.href}
+              key={item.tab}
+              href={tabHref(item.tab)}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                pathname === item.href
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                pathname === "/dashboard" && activeTab === item.tab
                   ? "bg-primary text-white"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
@@ -75,10 +86,10 @@ export default function DashboardNav({ role = "shop_owner" }: { role?: AccountRo
           ))}
         </nav>
 
-        <div className="p-4 border-t">
+        <div className="border-t p-4">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors w-full"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
             Cerrar sesión
@@ -86,27 +97,24 @@ export default function DashboardNav({ role = "shop_owner" }: { role?: AccountRo
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background z-50 px-2 py-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background px-2 py-2 md:hidden">
         <div className="flex items-center justify-around">
           {navItems.map((item) => (
             <Link
-              key={item.href}
-              href={item.href}
+              key={item.tab}
+              href={tabHref(item.tab)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-xs font-medium transition-colors",
-                pathname === item.href
-                  ? "text-primary"
-                  : "text-muted-foreground"
+                "flex flex-col items-center gap-0.5 rounded-xl px-4 py-1.5 text-xs font-medium transition-colors",
+                pathname === "/dashboard" && activeTab === item.tab ? "text-primary" : "text-muted-foreground"
               )}
             >
-              <item.icon className={cn("h-5 w-5", pathname === item.href && "text-primary")} />
+              <item.icon className={cn("h-5 w-5", pathname === "/dashboard" && activeTab === item.tab && "text-primary")} />
               {item.label}
             </Link>
           ))}
           <button
             onClick={handleLogout}
-            className="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-xs font-medium text-muted-foreground"
+            className="flex flex-col items-center gap-0.5 rounded-xl px-4 py-1.5 text-xs font-medium text-muted-foreground"
           >
             <LogOut className="h-5 w-5" />
             Salir

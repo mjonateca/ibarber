@@ -12,9 +12,16 @@ const createBookingSchema = z.object({
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
 });
 
+type OpeningHoursValue = Record<string, { open: string; close: string; closed: boolean }>;
+
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
+}
+
+function weekdayKey(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  return ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"][date.getDay()];
 }
 
 export async function POST(request: Request) {
@@ -54,7 +61,7 @@ export async function POST(request: Request) {
   const [{ data: shop }, { data: barber }, { data: service }] = await Promise.all([
     admin
       .from("shops")
-      .select("id, is_active")
+      .select("id, is_active, opening_hours")
       .eq("id", parsed.data.shop_id)
       .maybeSingle(),
     admin
@@ -105,6 +112,20 @@ export async function POST(request: Request) {
 
   if (timeToMinutes(parsed.data.end_time) <= timeToMinutes(parsed.data.start_time)) {
     return NextResponse.json({ error: "Horario inválido" }, { status: 400 });
+  }
+
+  const openingHours = (shop.opening_hours || {}) as OpeningHoursValue;
+  const daySchedule = openingHours[weekdayKey(parsed.data.date)];
+  if (daySchedule?.closed) {
+    return NextResponse.json({ error: "La barbería está cerrada ese día" }, { status: 409 });
+  }
+
+  if (
+    daySchedule &&
+    (timeToMinutes(parsed.data.start_time.slice(0, 5)) < timeToMinutes(daySchedule.open) ||
+      timeToMinutes(parsed.data.end_time.slice(0, 5)) > timeToMinutes(daySchedule.close))
+  ) {
+    return NextResponse.json({ error: "La hora elegida está fuera del horario de la barbería" }, { status: 409 });
   }
 
   const { data: conflict } = await admin

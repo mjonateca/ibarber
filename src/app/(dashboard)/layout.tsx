@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ensureAccountRecords } from "@/lib/account-repair";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +24,9 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <DashboardNav role={role} />
+      <Suspense fallback={null}>
+        <DashboardNav role={role} />
+      </Suspense>
       <main className="pb-20 md:pb-0 md:ml-60">
         {children}
       </main>

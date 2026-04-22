@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Camera, Clock, Scissors, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import type { Barber, BookingStatus, Service, Shop } from "@/types/database";
 import { formatCurrency, formatTime } from "@/lib/utils";
+import type { Barber, BookingStatus, Service, Shop } from "@/types/database";
 
 type BarberBooking = {
   id: string;
@@ -24,6 +25,7 @@ type BarberBooking = {
 };
 
 type BarberWithShop = Barber & { shops?: Shop | null; barber_services?: Array<{ service_id: string }> };
+type BarberTab = "summary" | "bookings" | "clients" | "profile";
 
 interface Props {
   barber: BarberWithShop;
@@ -31,6 +33,7 @@ interface Props {
   todayBookings: BarberBooking[];
   upcomingBookings: BarberBooking[];
   expectedToday: number;
+  initialTab?: string;
 }
 
 const STATUS_LABELS: Record<BookingStatus, string> = {
@@ -42,21 +45,51 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   cancelled: "Cancelada",
 };
 
+const barberTabs: Array<{ id: BarberTab; label: string }> = [
+  { id: "summary", label: "Hoy" },
+  { id: "bookings", label: "Turnos" },
+  { id: "clients", label: "Clientes" },
+  { id: "profile", label: "Perfil" },
+];
+
 export default function BarberDashboardClient({
   barber,
   services,
   todayBookings,
   upcomingBookings,
   expectedToday,
+  initialTab = "summary",
 }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = (searchParams.get("tab") || initialTab) as BarberTab;
   const [profile, setProfile] = useState(barber);
   const [saving, setSaving] = useState(false);
+
+  const clientRows = useMemo(
+    () =>
+      [...todayBookings, ...upcomingBookings].reduce<Array<{ name: string; phone: string; source: string }>>((acc, booking) => {
+        const name = booking.clients?.name;
+        if (!name || acc.some((item) => item.name === name)) return acc;
+        acc.push({
+          name,
+          phone: booking.clients?.phone || booking.clients?.whatsapp || "Sin teléfono",
+          source: `${booking.services?.name || "Servicio"} · ${booking.date}`,
+        });
+        return acc;
+      }, []),
+    [todayBookings, upcomingBookings]
+  );
+
+  function goToTab(tab: BarberTab) {
+    router.push(`/dashboard?tab=${tab}`);
+  }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     const form = new FormData(event.currentTarget);
-    const response = await fetch(`/api/barber/profile`, {
+    const response = await fetch("/api/barber/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -79,7 +112,7 @@ export default function BarberDashboardClient({
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl">
+    <div className="max-w-6xl p-4 md:p-8">
       <div className="mb-7">
         <p className="text-sm text-muted-foreground">Vista barbero</p>
         <h1 className="text-2xl font-bold">{profile.display_name}</h1>
@@ -88,27 +121,102 @@ export default function BarberDashboardClient({
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
         <Metric title="Turnos hoy" value={todayBookings.length} icon={Clock} />
         <Metric title="Próximos turnos" value={upcomingBookings.length} icon={CalendarDays} />
         <Metric title="Clientes hoy" value={new Set(todayBookings.map((booking) => booking.clients?.name).filter(Boolean)).size} icon={Users} />
         <Metric title="Estimado hoy" value={formatCurrency(expectedToday)} icon={Scissors} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+        {barberTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => goToTab(tab.id)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap ${
+              currentTab === tab.id ? "border-primary bg-primary text-white" : "bg-background"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {currentTab === "summary" && (
+        <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Turnos de hoy</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {todayBookings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tienes turnos para hoy.</p>
+              ) : (
+                todayBookings.map((booking) => <BookingRow key={booking.id} booking={booking} />)
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Servicios asignados</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {services.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aún no tienes servicios asignados.</p>
+              ) : (
+                services.map((service) => (
+                  <div key={service.id} className="rounded-lg border p-4">
+                    <p className="font-medium">{service.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {service.duration_min} min · {formatCurrency(service.price, service.currency)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {currentTab === "bookings" && (
         <Card className="shadow-none">
           <CardHeader>
-            <CardTitle>Turnos de hoy</CardTitle>
+            <CardTitle>Próximos turnos</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {todayBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tienes turnos para hoy.</p>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            {upcomingBookings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay turnos próximos.</p>
             ) : (
-              todayBookings.map((booking) => <BookingRow key={booking.id} booking={booking} />)
+              upcomingBookings.map((booking) => <BookingRow key={booking.id} booking={booking} />)
             )}
           </CardContent>
         </Card>
+      )}
 
+      {currentTab === "clients" && (
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle>Clientes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {clientRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no tienes clientes registrados en tus turnos.</p>
+            ) : (
+              clientRows.map((client) => (
+                <div key={client.name} className="rounded-lg border p-4">
+                  <p className="font-medium">{client.name}</p>
+                  <p className="text-sm text-muted-foreground">{client.phone}</p>
+                  <p className="text-xs text-muted-foreground">{client.source}</p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {currentTab === "profile" && (
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle>Mi perfil público</CardTitle>
@@ -129,47 +237,27 @@ export default function BarberDashboardClient({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="bio">Bio</Label>
-                <textarea id="bio" name="bio" className="min-h-[88px] w-full rounded-md border bg-background px-3 py-2 text-sm" defaultValue={profile.bio || ""} />
+                <textarea
+                  id="bio"
+                  name="bio"
+                  className="min-h-[88px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  defaultValue={profile.bio || ""}
+                />
               </div>
+              {profile.shops?.slug && (
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={`/${profile.shops.slug}`}>Ver mi barbería</Link>
+                </Button>
+              )}
               <Button type="submit" className="w-full" disabled={saving}>
-                <Camera className="h-4 w-4 mr-2" />
+                <Camera className="mr-2 h-4 w-4" />
                 {saving ? "Guardando..." : "Guardar perfil"}
               </Button>
             </form>
           </CardContent>
         </Card>
+      )}
 
-        <Card className="shadow-none lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Próximos turnos</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            {upcomingBookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay turnos próximos.</p>
-            ) : (
-              upcomingBookings.map((booking) => <BookingRow key={booking.id} booking={booking} />)
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-none lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Servicios asignados</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            {services.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aún no tienes servicios asignados.</p>
-            ) : (
-              services.map((service) => (
-                <div key={service.id} className="rounded-lg border p-4">
-                  <p className="font-medium">{service.name}</p>
-                  <p className="text-sm text-muted-foreground">{service.duration_min} min · {formatCurrency(service.price, service.currency)}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
       <Toaster />
     </div>
   );
@@ -200,7 +288,7 @@ function BookingRow({ booking }: { booking: BarberBooking }) {
 function Metric({ title, value, icon: Icon }: { title: string; value: number | string; icon: typeof Clock }) {
   return (
     <Card className="shadow-none">
-      <CardContent className="p-4 flex items-center gap-3">
+      <CardContent className="flex items-center gap-3 p-4">
         <div className="rounded-lg bg-primary/10 p-2">
           <Icon className="h-5 w-5 text-primary" />
         </div>

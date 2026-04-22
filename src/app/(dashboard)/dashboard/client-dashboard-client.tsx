@@ -1,15 +1,16 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Heart, MapPin, Star, UserRound } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CalendarDays, Heart, MapPin, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import type { BookingStatus, Client, Profile, Service, Shop } from "@/types/database";
 import { formatTime } from "@/lib/utils";
+import type { BookingStatus, Client, Profile, Service, Shop } from "@/types/database";
 
 type ListedShop = Shop & {
   barbers?: Array<{ id: string; display_name: string; rating: number | null }>;
@@ -31,6 +32,8 @@ type ClientBooking = {
   reviews?: Array<{ id: string }>;
 };
 
+type ClientTab = "summary" | "bookings" | "favorites" | "profile";
+
 interface Props {
   profile: Profile;
   client: Client;
@@ -38,6 +41,7 @@ interface Props {
   favoriteShopIds: string[];
   favoriteBarberIds: string[];
   bookings: ClientBooking[];
+  initialTab?: string;
 }
 
 const STATUS_LABELS: Record<BookingStatus, string> = {
@@ -49,6 +53,13 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   cancelled: "Cancelada",
 };
 
+const clientTabs: Array<{ id: ClientTab; label: string }> = [
+  { id: "summary", label: "Cerca de mí" },
+  { id: "bookings", label: "Reservas" },
+  { id: "favorites", label: "Favoritos" },
+  { id: "profile", label: "Perfil" },
+];
+
 export default function ClientDashboardClient({
   profile,
   client,
@@ -56,12 +67,34 @@ export default function ClientDashboardClient({
   favoriteShopIds,
   favoriteBarberIds,
   bookings,
+  initialTab = "summary",
 }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = (searchParams.get("tab") || initialTab) as ClientTab;
   const [shopFavorites, setShopFavorites] = useState(new Set(favoriteShopIds));
   const [barberFavorites, setBarberFavorites] = useState(new Set(favoriteBarberIds));
   const [reviewedBookingIds, setReviewedBookingIds] = useState(
     new Set(bookings.filter((booking) => booking.reviews?.length).map((booking) => booking.id))
   );
+
+  const favoriteShops = useMemo(
+    () => shops.filter((shop) => shopFavorites.has(shop.id)),
+    [shopFavorites, shops]
+  );
+  const favoriteBarbers = useMemo(
+    () =>
+      shops.flatMap((shop) =>
+        (shop.barbers || [])
+          .filter((barber) => barberFavorites.has(barber.id))
+          .map((barber) => ({ ...barber, shopName: shop.name, shopSlug: shop.slug }))
+      ),
+    [barberFavorites, shops]
+  );
+
+  function goToTab(tab: ClientTab) {
+    router.push(`/dashboard?tab=${tab}`);
+  }
 
   async function toggleFavorite(type: "shop" | "barber", id: string) {
     const current = type === "shop" ? shopFavorites : barberFavorites;
@@ -110,22 +143,37 @@ export default function ClientDashboardClient({
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl">
+    <div className="max-w-6xl p-4 md:p-8">
       <div className="mb-7">
         <p className="text-sm text-muted-foreground">Vista cliente</p>
-        <h1 className="text-2xl font-bold">{client.name || `${profile.first_name} ${profile.last_name || ""}`}</h1>
+        <h1 className="text-2xl font-bold">{client.name || `${profile.first_name} ${profile.last_name || ""}`.trim()}</h1>
         <p className="text-muted-foreground">
           {profile.city} · {profile.country_name}
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
         <Metric title="Reservas" value={bookings.length} />
         <Metric title="Barberías favoritas" value={shopFavorites.size} />
         <Metric title="Barberos favoritos" value={barberFavorites.size} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+        {clientTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => goToTab(tab.id)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap ${
+              currentTab === tab.id ? "border-primary bg-primary text-white" : "bg-background"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {currentTab === "summary" && (
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle>Barberías cerca de tu zona</CardTitle>
@@ -139,7 +187,7 @@ export default function ClientDashboardClient({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h2 className="font-semibold">{shop.name}</h2>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5" />
                         {shop.city || "Sin ciudad"}
                       </p>
@@ -148,11 +196,12 @@ export default function ClientDashboardClient({
                       aria-label="Favorito"
                       onClick={() => toggleFavorite("shop", shop.id)}
                       className="rounded-md border p-2"
+                      type="button"
                     >
                       <Heart className={`h-4 w-4 ${shopFavorites.has(shop.id) ? "fill-primary text-primary" : ""}`} />
                     </button>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
                     {shop.description || shop.address || "Agenda disponible."}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -163,29 +212,14 @@ export default function ClientDashboardClient({
                       <Link href={`/${shop.slug}`}>Ver barbería</Link>
                     </Button>
                   </div>
-                  {!!shop.barbers?.length && (
-                    <div className="mt-3 space-y-2">
-                      {shop.barbers.slice(0, 3).map((barber) => (
-                        <button
-                          key={barber.id}
-                          onClick={() => toggleFavorite("barber", barber.id)}
-                          className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm"
-                        >
-                          <span className="flex items-center gap-2">
-                            <UserRound className="h-4 w-4" />
-                            {barber.display_name}
-                          </span>
-                          <Heart className={`h-4 w-4 ${barberFavorites.has(barber.id) ? "fill-primary text-primary" : ""}`} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               ))
             )}
           </CardContent>
         </Card>
+      )}
 
+      {currentTab === "bookings" && (
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle>Mis reservas</CardTitle>
@@ -198,7 +232,7 @@ export default function ClientDashboardClient({
                 <div key={booking.id} className="rounded-lg border p-4">
                   <p className="font-medium">{booking.shops?.name || "Barbería"}</p>
                   <p className="text-sm text-muted-foreground">
-                    <CalendarDays className="inline h-3.5 w-3.5 mr-1" />
+                    <CalendarDays className="mr-1 inline h-3.5 w-3.5" />
                     {booking.date} · {formatTime(booking.start_time.slice(0, 5))}
                   </p>
                   <p className="text-sm text-muted-foreground">
@@ -206,17 +240,34 @@ export default function ClientDashboardClient({
                   </p>
                   <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
 
+                  {booking.shops?.slug && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/${booking.shops.slug}`}>Ver barbería</Link>
+                      </Button>
+                      <Button asChild size="sm">
+                        <Link href={`/${booking.shops.slug}/reservar?barber=${booking.barber_id}`}>Reservar otra</Link>
+                      </Button>
+                    </div>
+                  )}
+
                   {booking.status === "completed" && !reviewedBookingIds.has(booking.id) && (
                     <form onSubmit={(event) => submitReview(event, booking)} className="mt-3 space-y-2">
                       <Label>Evaluar barbero</Label>
                       <select name="rating" className="h-10 w-full rounded-md border bg-background px-3 text-sm" defaultValue="5">
                         {[5, 4, 3, 2, 1].map((rating) => (
-                          <option key={rating} value={rating}>{rating} estrellas</option>
+                          <option key={rating} value={rating}>
+                            {rating} estrellas
+                          </option>
                         ))}
                       </select>
-                      <textarea name="comment" className="min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Comentario opcional" />
+                      <textarea
+                        name="comment"
+                        className="min-h-[70px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        placeholder="Comentario opcional"
+                      />
                       <Button size="sm" type="submit">
-                        <Star className="h-4 w-4 mr-1" />
+                        <Star className="mr-1 h-4 w-4" />
                         Guardar reseña
                       </Button>
                     </form>
@@ -226,7 +277,89 @@ export default function ClientDashboardClient({
             )}
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {currentTab === "favorites" && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Barberías favoritas</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {favoriteShops.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Todavía no has marcado barberías favoritas.</p>
+              ) : (
+                favoriteShops.map((shop) => (
+                  <div key={shop.id} className="rounded-lg border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{shop.name}</p>
+                        <p className="text-sm text-muted-foreground">{shop.city || "Sin ciudad"}</p>
+                      </div>
+                      <button type="button" onClick={() => toggleFavorite("shop", shop.id)} className="rounded-md border p-2">
+                        <Heart className="h-4 w-4 fill-primary text-primary" />
+                      </button>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/${shop.slug}`}>Ver barbería</Link>
+                      </Button>
+                      <Button asChild size="sm">
+                        <Link href={`/${shop.slug}/reservar`}>Reservar</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Barberos favoritos</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {favoriteBarbers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Todavía no has marcado barberos favoritos.</p>
+              ) : (
+                favoriteBarbers.map((barber) => (
+                  <div key={barber.id} className="rounded-lg border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{barber.display_name}</p>
+                        <p className="text-sm text-muted-foreground">{barber.shopName}</p>
+                      </div>
+                      <button type="button" onClick={() => toggleFavorite("barber", barber.id)} className="rounded-md border p-2">
+                        <Heart className="h-4 w-4 fill-primary text-primary" />
+                      </button>
+                    </div>
+                    <div className="mt-3">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/${barber.shopSlug}/reservar?barber=${barber.id}`}>Reservar con él</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {currentTab === "profile" && (
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle>Mi perfil</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <ProfileItem label="Nombre" value={client.name || "Sin nombre"} />
+            <ProfileItem label="Email" value={profile.email || "Sin email"} />
+            <ProfileItem label="Teléfono" value={client.phone || client.whatsapp || profile.phone || "Sin teléfono"} />
+            <ProfileItem label="Ubicación" value={`${profile.city}, ${profile.country_name}`} />
+          </CardContent>
+        </Card>
+      )}
+
       <Toaster />
     </div>
   );
@@ -240,5 +373,14 @@ function Metric({ title, value }: { title: string; value: number }) {
         <p className="text-xs text-muted-foreground">{title}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function ProfileItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border p-4">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 font-medium">{value}</p>
+    </div>
   );
 }
