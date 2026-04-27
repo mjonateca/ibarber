@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireOwnedShop } from "@/lib/server-authz";
+import { requireOwnedActiveShop } from "@/lib/server-authz";
 
 const serviceSchema = z.object({
   shop_id: z.string().uuid().optional(),
@@ -15,7 +15,7 @@ const serviceSchema = z.object({
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const context = await requireOwnedShop(searchParams.get("shop_id"));
+  const context = await requireOwnedActiveShop(searchParams.get("shop_id"));
   if (context.response) return context.response;
 
   const { data, error } = await context.supabase
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const context = await requireOwnedShop(parsed.data.shop_id);
+  const context = await requireOwnedActiveShop(parsed.data.shop_id);
   if (context.response) return context.response;
 
   let { data, error } = await context.supabase

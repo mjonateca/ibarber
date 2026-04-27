@@ -491,6 +491,13 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
                     {selectedService && formatCurrency(selectedService.price, selectedService.currency)}
                   </span>
                 </div>
+                {shop.payments_enabled && (
+                  <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+                    {shop.online_payment_mode === "required"
+                      ? "Esta barbería tiene pago online obligatorio. Después de reservar podrás completar el pago desde tu panel."
+                      : "Esta barbería admite pago online. Después de reservar podrás pagar desde tu panel si quieres dejarla abonada."}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

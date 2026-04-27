@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { addDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { Metadata } from "next";
-import type { Barber, Client, Profile, Service, Shop } from "@/types/database";
+import type { Barber, Client, ClientPaymentMethod, Profile, Service, Shop, ShopPaymentMethod, ShopSubscription } from "@/types/database";
 import { ensureAccountRecords } from "@/lib/account-repair";
 import { IS_DEMO, demoBookings, demoShop } from "@/lib/demo-data";
+import { buildShopAnalytics } from "@/lib/shop-analytics";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import BarberDashboardClient from "./barber-dashboard-client";
 import ClientDashboardClient from "./client-dashboard-client";
@@ -31,6 +32,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         barbers={[]}
         clients={[]}
         notificationEvents={[]}
+        subscription={null}
+        paymentMethods={[]}
+        analytics={{
+          totalsByStatus: { total: demoBookings.length, confirmed: 8, pending: 2, cancelled: 1, completed: 47 },
+          estimatedRevenue: 18500,
+          realizedRevenue: 12600,
+          avgServiceTime: 38,
+          avgTicket: 520,
+          recurrentClients: 9,
+          topServices: [],
+          topBarbers: [],
+          bestBarbers: [],
+          peakHours: [],
+          peakWeekdays: [],
+          evolutions: { day: [], week: [], month: [] },
+          avgLeadMinutes: 38,
+        }}
         stats={{ totalCompleted: 47, upcomingConfirmed: 8, expectedToday: 3250, expectedWeek: 18500 }}
         todayStr={todayStr}
         initialTab={initialTab}
@@ -52,7 +70,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     const client = account.client as Client | null;
     if (!client) redirect("/");
 
-    const [{ data: shopsRaw }, { data: favShops }, { data: favBarbers }, { data: bookingsRaw }] = await Promise.all([
+    const [{ data: shopsRaw }, { data: favShops }, { data: favBarbers }, { data: bookingsRaw }, { data: paymentMethodsRaw }] = await Promise.all([
       admin
         .from("shops")
         .select("*, barbers(id, display_name, rating), services(*)")
@@ -69,6 +87,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         .order("date", { ascending: false })
         .order("start_time", { ascending: false })
         .limit(20),
+      admin.from("client_payment_methods").select("*").eq("client_id", client.id).order("is_default", { ascending: false }),
     ]);
 
     const shops = ((shopsRaw || []) as Array<Shop & { barbers?: Barber[]; services?: Service[] }>)
@@ -87,6 +106,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         favoriteShopIds={(favShops || []).map((item) => item.shop_id)}
         favoriteBarberIds={(favBarbers || []).map((item) => item.barber_id)}
         bookings={(bookingsRaw || []) as never}
+        paymentMethods={(paymentMethodsRaw || []) as ClientPaymentMethod[]}
         initialTab={initialTab}
       />
     );
@@ -151,7 +171,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const today = format(new Date(), "yyyy-MM-dd");
   const weekEnd = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
-  const [{ data: todayBookingsRaw }, { data: bookingsRaw }, { count: totalBookings }, { count: pendingBookings }, { data: weekBookingsRaw }] =
+  const [
+    { data: todayBookingsRaw },
+    { data: bookingsRaw },
+    { count: totalBookings },
+    { count: pendingBookings },
+    { data: weekBookingsRaw },
+    { data: subscriptionRaw },
+    { data: paymentMethodsRaw },
+  ] =
     await Promise.all([
       admin
         .from("bookings")
@@ -178,6 +206,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         .gte("date", today)
         .lte("date", weekEnd)
         .not("status", "in", '("cancelled","no_show")'),
+      admin.from("shop_subscriptions").select("*").eq("shop_id", shop.id).maybeSingle(),
+      admin.from("shop_payment_methods").select("*").eq("shop_id", shop.id).order("is_default", { ascending: false }),
     ]);
 
   type BookingWithRelations = import("./dashboard-client").BookingWithRelations;
@@ -190,6 +220,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     (sum, booking) => sum + Number(booking.services?.price || 0),
     0
   );
+  const analytics = buildShopAnalytics(bookings as never);
 
   const [{ data: services }, { data: barbers }, { data: clients }, { data: notificationEvents }] = await Promise.all([
     admin.from("services").select("*").eq("shop_id", shop.id).order("sort_order").order("name"),
@@ -209,6 +240,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       barbers={(barbers || []) as never}
       clients={(clients || []) as never}
       notificationEvents={(notificationEvents || []) as never}
+      subscription={subscriptionRaw as ShopSubscription | null}
+      paymentMethods={(paymentMethodsRaw || []) as ShopPaymentMethod[]}
+      analytics={analytics}
       stats={{
         totalCompleted: totalBookings || 0,
         upcomingConfirmed: pendingBookings || 0,

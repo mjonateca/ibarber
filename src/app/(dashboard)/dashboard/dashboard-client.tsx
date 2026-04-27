@@ -9,10 +9,12 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
+  CreditCard,
   ExternalLink,
   Loader2,
   Scissors,
   Settings,
+  TrendingUp,
   UserRound,
   Users,
 } from "lucide-react";
@@ -23,7 +25,17 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { formatCurrency, formatTime } from "@/lib/utils";
-import type { Barber, BookingStatus, NotificationEvent, Service, Shop } from "@/types/database";
+import type {
+  Barber,
+  BookingStatus,
+  NotificationEvent,
+  PaymentStatus,
+  Service,
+  Shop,
+  ShopPaymentMethod,
+  ShopSubscription,
+  SubscriptionStatus,
+} from "@/types/database";
 
 export interface BookingWithRelations {
   id: string;
@@ -32,6 +44,10 @@ export interface BookingWithRelations {
   start_time: string;
   end_time: string;
   status: BookingStatus;
+  payment_status: PaymentStatus;
+  payment_required: boolean;
+  payment_amount: number;
+  payment_currency: string;
   clients: { name: string; phone: string | null; whatsapp: string | null } | null;
   barbers: { display_name: string } | null;
   services: { name: string; duration_min: number; price: number } | null;
@@ -49,6 +65,32 @@ type ClientSummary = {
 
 type OpeningHoursValue = Record<string, { open: string; close: string; closed: boolean }>;
 
+type Analytics = {
+  totalsByStatus: {
+    total: number;
+    confirmed: number;
+    pending: number;
+    cancelled: number;
+    completed: number;
+  };
+  estimatedRevenue: number;
+  realizedRevenue: number;
+  avgServiceTime: number;
+  avgTicket: number;
+  recurrentClients: number;
+  topServices: Array<{ name: string; count: number; revenue: number }>;
+  topBarbers: Array<{ name: string; count: number; revenue: number; completed: number }>;
+  bestBarbers: Array<{ name: string; count: number; revenue: number; completed: number; completionRate: number }>;
+  peakHours: Array<{ slot: string; count: number }>;
+  peakWeekdays: Array<{ day: string; count: number }>;
+  evolutions: {
+    day: Array<{ label: string; value: number }>;
+    week: Array<{ label: string; value: number }>;
+    month: Array<{ label: string; value: number }>;
+  };
+  avgLeadMinutes: number;
+};
+
 interface Props {
   shop: Shop;
   todayBookings: BookingWithRelations[];
@@ -57,6 +99,9 @@ interface Props {
   barbers: BarberWithServices[];
   clients: ClientSummary[];
   notificationEvents: NotificationEvent[];
+  subscription: ShopSubscription | null;
+  paymentMethods: ShopPaymentMethod[];
+  analytics: Analytics;
   stats: { totalCompleted: number; upcomingConfirmed: number; expectedToday: number; expectedWeek: number };
   todayStr: string;
   initialTab?: string;
@@ -82,6 +127,21 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   completed: "Completada",
   no_show: "No se presentó",
   cancelled: "Cancelada",
+};
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: "Pendiente de pago",
+  paid: "Pagada",
+  failed: "Pago fallido",
+  refunded: "Reembolsada",
+};
+
+const SUBSCRIPTION_LABELS: Record<SubscriptionStatus, string> = {
+  trial: "Prueba gratis",
+  active: "Activa",
+  past_due: "Pago pendiente",
+  cancelled: "Cancelada",
+  expired: "Vencida",
 };
 
 const WEEK_DAYS = [
@@ -130,6 +190,18 @@ function normalizeOpeningHours(value: Shop["opening_hours"]): OpeningHoursValue 
   return normalized;
 }
 
+function subscriptionTone(status?: SubscriptionStatus | null) {
+  switch (status) {
+    case "active":
+    case "trial":
+      return "text-emerald-600";
+    case "past_due":
+      return "text-amber-600";
+    default:
+      return "text-destructive";
+  }
+}
+
 export default function DashboardClient({
   shop,
   todayBookings,
@@ -138,6 +210,9 @@ export default function DashboardClient({
   barbers: initialBarbers,
   clients,
   notificationEvents,
+  subscription,
+  paymentMethods,
+  analytics,
   stats,
   todayStr,
   initialTab = "summary",
@@ -152,6 +227,7 @@ export default function DashboardClient({
   const [shopState, setShopState] = useState(shop);
   const [openingHours, setOpeningHours] = useState<OpeningHoursValue>(() => normalizeOpeningHours(shop.opening_hours));
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [billingAction, setBillingAction] = useState<string | null>(null);
 
   const clientItems = useMemo(
     () =>
@@ -184,12 +260,12 @@ export default function DashboardClient({
       body: JSON.stringify({ status }),
     });
 
+    const payload = await response.json().catch(() => ({ error: "Error inesperado" }));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({ error: "Error" }));
-      toast({ variant: "destructive", title: "Error", description: payload.error });
+      toast({ variant: "destructive", title: "No se actualizó la reserva", description: payload.error });
     } else {
       setBookings((prev) => prev.map((booking) => (booking.id === bookingId ? { ...booking, status } : booking)));
-      toast({ title: "Reserva actualizada", description: STATUS_LABELS[status] });
+      toast({ title: payload.message || "Reserva actualizada", description: STATUS_LABELS[status] });
     }
 
     setUpdatingId(null);
@@ -210,7 +286,7 @@ export default function DashboardClient({
         price: Number(form.get("price")),
       }),
     });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       toast({ variant: "destructive", title: "No se creó el servicio", description: payload.error });
       return;
@@ -226,7 +302,11 @@ export default function DashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_active: !service.is_active, is_visible: !service.is_active }),
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      toast({ variant: "destructive", title: "No se actualizó el servicio", description: payload.error });
+      return;
+    }
     setServices((prev) =>
       prev.map((item) =>
         item.id === service.id ? { ...item, is_active: !item.is_active, is_visible: !item.is_active } : item
@@ -249,7 +329,7 @@ export default function DashboardClient({
         service_ids: serviceIds,
       }),
     });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       toast({ variant: "destructive", title: "No se creó el barbero", description: payload.error });
       return;
@@ -265,7 +345,11 @@ export default function DashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_active: !barber.is_active }),
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      toast({ variant: "destructive", title: "No se actualizó el barbero", description: payload.error });
+      return;
+    }
     setBarbers((prev) => prev.map((item) => (item.id === barber.id ? { ...item, is_active: !item.is_active } : item)));
   }
 
@@ -306,6 +390,30 @@ export default function DashboardClient({
     toast({ title: "Horario actualizado" });
   }
 
+  async function openBillingCheckout() {
+    setBillingAction("checkout");
+    const response = await fetch("/api/billing/checkout", { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    setBillingAction(null);
+    if (!response.ok || !payload.url) {
+      toast({ variant: "destructive", title: "No se pudo iniciar la suscripción", description: payload.error || "Error inesperado" });
+      return;
+    }
+    window.location.href = payload.url;
+  }
+
+  async function openBillingPortal() {
+    setBillingAction("portal");
+    const response = await fetch("/api/billing/portal", { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    setBillingAction(null);
+    if (!response.ok || !payload.url) {
+      toast({ variant: "destructive", title: "No se pudo abrir billing", description: payload.error || "Error inesperado" });
+      return;
+    }
+    window.location.href = payload.url;
+  }
+
   return (
     <div className="max-w-6xl p-4 md:p-8">
       <div className="mb-7 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -315,6 +423,12 @@ export default function DashboardClient({
             {shopState.city ? `${shopState.city} · ` : ""}
             {todayStr}
           </p>
+          {subscription && (
+            <p className={`mt-2 text-sm font-medium ${subscriptionTone(subscription.status)}`}>
+              Suscripción: {SUBSCRIPTION_LABELS[subscription.status]}
+              {subscription.trial_ends_at ? ` · Trial hasta ${new Date(subscription.trial_ends_at).toLocaleDateString()}` : ""}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
@@ -343,12 +457,113 @@ export default function DashboardClient({
       </div>
 
       {currentTab === "summary" && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Metric title="Citas hoy" value={todayBookings.length} icon={Clock} />
-          <Metric title="Completadas" value={stats.totalCompleted} icon={CheckCircle} />
-          <Metric title="Próximas confirmadas" value={stats.upcomingConfirmed} icon={Users} />
-          <Metric title="Estimado hoy" value={formatCurrency(stats.expectedToday)} icon={Scissors} />
-          <Metric title="Estimado semana" value={formatCurrency(stats.expectedWeek)} icon={CalendarDays} />
+        <div className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Metric title="Citas hoy" value={todayBookings.length} icon={Clock} />
+            <Metric title="Esperado hoy" value={formatCurrency(stats.expectedToday)} icon={TrendingUp} />
+            <Metric title="Esperado semana" value={formatCurrency(stats.expectedWeek)} icon={CalendarDays} />
+            <Metric title="Total reservas" value={analytics.totalsByStatus.total} icon={CalendarDays} />
+            <Metric title="Confirmadas" value={analytics.totalsByStatus.confirmed} icon={CheckCircle} />
+            <Metric title="Pendientes" value={analytics.totalsByStatus.pending} icon={Clock} />
+            <Metric title="Canceladas" value={analytics.totalsByStatus.cancelled} icon={Users} />
+            <Metric title="Ingresos estimados" value={formatCurrency(analytics.estimatedRevenue)} icon={Scissors} />
+            <Metric title="Ingresos cobrados" value={formatCurrency(analytics.realizedRevenue)} icon={TrendingUp} />
+            <Metric title="Ticket medio" value={formatCurrency(analytics.avgTicket)} icon={CreditCard} />
+            <Metric title="Tiempo medio servicio" value={`${analytics.avgServiceTime} min`} icon={Clock} />
+            <Metric title="Clientes recurrentes" value={analytics.recurrentClients} icon={Users} />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <InsightList
+              title="Servicios más solicitados"
+              items={analytics.topServices.map((item) => ({
+                title: item.name,
+                detail: `${item.count} reservas · ${formatCurrency(item.revenue)}`,
+              }))}
+            />
+            <InsightList
+              title="Barberos con más reservas"
+              items={analytics.topBarbers.map((item) => ({
+                title: item.name,
+                detail: `${item.count} reservas · ${formatCurrency(item.revenue)}`,
+              }))}
+            />
+            <InsightList
+              title="Barberos con mejor rendimiento"
+              items={analytics.bestBarbers.map((item) => ({
+                title: item.name,
+                detail: `${Math.round(item.completionRate * 100)}% completadas · ${formatCurrency(item.revenue)}`,
+              }))}
+            />
+            <InsightList
+              title="Franja horaria con más demanda"
+              items={analytics.peakHours.map((item) => ({
+                title: item.slot,
+                detail: `${item.count} reservas`,
+              }))}
+            />
+            <InsightList
+              title="Días con más demanda"
+              items={analytics.peakWeekdays.map((item) => ({
+                title: item.day,
+                detail: `${item.count} reservas`,
+              }))}
+            />
+            <InsightList
+              title="Evolución mensual"
+              items={analytics.evolutions.month.slice(-6).map((item) => ({
+                title: item.label,
+                detail: `${item.value} reservas`,
+              }))}
+            />
+          </div>
+
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Suscripción y cobros</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {subscription ? (
+                <>
+                  <div className="rounded-xl border p-4">
+                    <p className="font-medium">Estado actual: {SUBSCRIPTION_LABELS[subscription.status]}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Importe: {formatCurrency(subscription.monthly_price, subscription.currency)} / mes
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Próximo corte: {subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : "Pendiente"}
+                    </p>
+                    {subscription.last_payment_error && (
+                      <p className="mt-2 text-sm text-destructive">{subscription.last_payment_error}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={openBillingCheckout}>
+                      {billingAction === "checkout" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Activar / renovar plan"}
+                    </Button>
+                    <Button variant="outline" onClick={openBillingPortal}>
+                      {billingAction === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gestionar método de pago"}
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Tarjetas registradas</p>
+                    {paymentMethods.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Todavía no hay métodos de pago guardados para la barbería.</p>
+                    ) : (
+                      paymentMethods.map((paymentMethod) => (
+                        <div key={paymentMethod.id} className="rounded-lg border p-3 text-sm">
+                          {paymentMethod.brand?.toUpperCase() || "Tarjeta"} terminada en {paymentMethod.last4 || "****"}
+                          {paymentMethod.is_default ? " · Predeterminada" : ""}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">La suscripción de esta barbería todavía se está preparando.</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -369,16 +584,14 @@ export default function DashboardClient({
                       {booking.date} · {formatTime(booking.start_time.slice(0, 5))} · {booking.services?.name} · {booking.barbers?.display_name}
                     </p>
                     <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {PAYMENT_STATUS_LABELS[booking.payment_status]}
+                      {booking.payment_amount > 0 ? ` · ${formatCurrency(booking.payment_amount, booking.payment_currency)}` : ""}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(["confirmed", "completed", "cancelled"] as BookingStatus[]).map((status) => (
-                      <Button
-                        key={status}
-                        size="sm"
-                        variant="outline"
-                        disabled={updatingId === booking.id}
-                        onClick={() => updateBooking(booking.id, status)}
-                      >
+                      <Button key={status} size="sm" variant="outline" disabled={updatingId === booking.id} onClick={() => updateBooking(booking.id, status)}>
                         {updatingId === booking.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : STATUS_LABELS[status]}
                       </Button>
                     ))}
@@ -441,9 +654,7 @@ export default function DashboardClient({
         </div>
       )}
 
-      {currentTab === "clients" && (
-        <SimpleList title="Clientes" empty="Aún no hay clientes con reservas." items={clientItems} />
-      )}
+      {currentTab === "clients" && <SimpleList title="Clientes" empty="Aún no hay clientes con reservas." items={clientItems} />}
 
       {currentTab === "schedule" && (
         <Card className="shadow-none">
@@ -476,11 +687,7 @@ export default function DashboardClient({
                     />
                   </div>
                   <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={openingHours[key].closed}
-                      onChange={(event) => updateDay(key, "closed", event.target.checked)}
-                    />
+                    <input type="checkbox" checked={openingHours[key].closed} onChange={(event) => updateDay(key, "closed", event.target.checked)} />
                     Cerrado
                   </label>
                 </div>
@@ -516,6 +723,7 @@ export default function DashboardClient({
               {shopState.city} · {shopState.country_name}
             </p>
             <p>{shopState.description || "Sin descripción pública."}</p>
+            <p>Pagos online: {shopState.payments_enabled ? `Sí · modo ${shopState.online_payment_mode}` : "No activados"}</p>
           </CardContent>
         </Card>
       )}
@@ -539,6 +747,10 @@ function Metric({ title, value, icon: Icon }: { title: string; value: number | s
       </CardContent>
     </Card>
   );
+}
+
+function InsightList({ title, items }: { title: string; items: Array<{ title: string; detail: string }> }) {
+  return <SimpleList title={title} empty="No hay datos suficientes todavía." items={items} />;
 }
 
 function CreateServiceForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

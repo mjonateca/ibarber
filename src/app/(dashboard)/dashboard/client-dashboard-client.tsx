@@ -3,14 +3,15 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, Heart, MapPin, Star } from "lucide-react";
+import { CalendarDays, CreditCard, Heart, Loader2, MapPin, Star } from "lucide-react";
+import { StripeElementsPanel } from "@/components/payments/stripe-elements-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import { formatTime } from "@/lib/utils";
-import type { BookingStatus, Client, Profile, Service, Shop } from "@/types/database";
+import { formatCurrency, formatTime } from "@/lib/utils";
+import type { BookingStatus, Client, ClientPaymentMethod, PaymentStatus, Profile, Service, Shop } from "@/types/database";
 
 type ListedShop = Shop & {
   barbers?: Array<{ id: string; display_name: string; rating: number | null }>;
@@ -26,6 +27,11 @@ type ClientBooking = {
   barber_id: string;
   shop_id: string;
   service_id: string;
+  payment_status: PaymentStatus;
+  payment_required: boolean;
+  payment_amount: number;
+  payment_currency: string;
+  paid_at: string | null;
   shops: { name: string; slug: string } | null;
   barbers: { display_name: string } | null;
   services: { name: string; price: number; currency: string } | null;
@@ -41,6 +47,7 @@ interface Props {
   favoriteShopIds: string[];
   favoriteBarberIds: string[];
   bookings: ClientBooking[];
+  paymentMethods: ClientPaymentMethod[];
   initialTab?: string;
 }
 
@@ -51,6 +58,13 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   completed: "Completada",
   no_show: "No se presentó",
   cancelled: "Cancelada",
+};
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: "Pendiente de pago",
+  paid: "Pagada",
+  failed: "Pago fallido",
+  refunded: "Reembolsada",
 };
 
 const clientTabs: Array<{ id: ClientTab; label: string }> = [
@@ -67,6 +81,7 @@ export default function ClientDashboardClient({
   favoriteShopIds,
   favoriteBarberIds,
   bookings,
+  paymentMethods,
   initialTab = "summary",
 }: Props) {
   const router = useRouter();
@@ -77,11 +92,12 @@ export default function ClientDashboardClient({
   const [reviewedBookingIds, setReviewedBookingIds] = useState(
     new Set(bookings.filter((booking) => booking.reviews?.length).map((booking) => booking.id))
   );
+  const [setupSecret, setSetupSecret] = useState<string | null>(null);
+  const [paymentSecret, setPaymentSecret] = useState<string | null>(null);
+  const [activePaymentBookingId, setActivePaymentBookingId] = useState<string | null>(null);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
-  const favoriteShops = useMemo(
-    () => shops.filter((shop) => shopFavorites.has(shop.id)),
-    [shopFavorites, shops]
-  );
+  const favoriteShops = useMemo(() => shops.filter((shop) => shopFavorites.has(shop.id)), [shopFavorites, shops]);
   const favoriteBarbers = useMemo(
     () =>
       shops.flatMap((shop) =>
@@ -142,6 +158,35 @@ export default function ClientDashboardClient({
     toast({ title: "Reseña guardada" });
   }
 
+  async function startAddCard() {
+    setLoadingAction("setup");
+    const response = await fetch("/api/payments/setup-intent", { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    setLoadingAction(null);
+
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "No se pudo preparar la tarjeta", description: payload.error || "Error inesperado" });
+      return;
+    }
+
+    setSetupSecret(payload.clientSecret || null);
+  }
+
+  async function startBookingPayment(bookingId: string) {
+    setLoadingAction(bookingId);
+    const response = await fetch(`/api/payments/bookings/${bookingId}`, { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    setLoadingAction(null);
+
+    if (!response.ok) {
+      toast({ variant: "destructive", title: "No se pudo preparar el pago", description: payload.error || "Error inesperado" });
+      return;
+    }
+
+    setActivePaymentBookingId(bookingId);
+    setPaymentSecret(payload.clientSecret || null);
+  }
+
   return (
     <div className="max-w-6xl p-4 md:p-8">
       <div className="mb-7">
@@ -192,12 +237,7 @@ export default function ClientDashboardClient({
                         {shop.city || "Sin ciudad"}
                       </p>
                     </div>
-                    <button
-                      aria-label="Favorito"
-                      onClick={() => toggleFavorite("shop", shop.id)}
-                      className="rounded-md border p-2"
-                      type="button"
-                    >
+                    <button aria-label="Favorito" onClick={() => toggleFavorite("shop", shop.id)} className="rounded-md border p-2" type="button">
                       <Heart className={`h-4 w-4 ${shopFavorites.has(shop.id) ? "fill-primary text-primary" : ""}`} />
                     </button>
                   </div>
@@ -239,6 +279,10 @@ export default function ClientDashboardClient({
                     {booking.services?.name} · {booking.barbers?.display_name}
                   </p>
                   <p className="text-xs text-muted-foreground">{STATUS_LABELS[booking.status]}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {PAYMENT_STATUS_LABELS[booking.payment_status]}
+                    {booking.payment_amount > 0 ? ` · ${formatCurrency(booking.payment_amount, booking.payment_currency)}` : ""}
+                  </p>
 
                   {booking.shops?.slug && (
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -248,6 +292,28 @@ export default function ClientDashboardClient({
                       <Button asChild size="sm">
                         <Link href={`/${booking.shops.slug}/reservar?barber=${booking.barber_id}`}>Reservar otra</Link>
                       </Button>
+                      {booking.payment_status !== "paid" && booking.status !== "cancelled" && (
+                        <Button size="sm" variant="outline" onClick={() => startBookingPayment(booking.id)}>
+                          {loadingAction === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pagar ahora"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  {activePaymentBookingId === booking.id && paymentSecret && (
+                    <div className="mt-4 rounded-lg border p-4">
+                      <p className="mb-3 text-sm font-medium">Completa el pago de esta reserva</p>
+                      <StripeElementsPanel
+                        clientSecret={paymentSecret}
+                        mode="payment"
+                        buttonLabel="Confirmar pago"
+                        onSuccess={() => {
+                          toast({ title: "Pago procesado", description: "Estamos actualizando el estado de tu reserva." });
+                          setActivePaymentBookingId(null);
+                          setPaymentSecret(null);
+                          router.refresh();
+                        }}
+                      />
                     </div>
                   )}
 
@@ -356,6 +422,46 @@ export default function ClientDashboardClient({
             <ProfileItem label="Email" value={profile.email || "Sin email"} />
             <ProfileItem label="Teléfono" value={client.phone || client.whatsapp || profile.phone || "Sin teléfono"} />
             <ProfileItem label="Ubicación" value={`${profile.city}, ${profile.country_name}`} />
+          </CardContent>
+          <CardContent className="space-y-4 border-t pt-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="font-medium">Métodos de pago</p>
+                <p className="text-sm text-muted-foreground">Guarda una tarjeta para pagar reservas online.</p>
+              </div>
+              <Button variant="outline" onClick={startAddCard}>
+                {loadingAction === "setup" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                Añadir tarjeta
+              </Button>
+            </div>
+
+            {paymentMethods.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no tienes tarjetas guardadas.</p>
+            ) : (
+              <div className="space-y-2">
+                {paymentMethods.map((paymentMethod) => (
+                  <div key={paymentMethod.id} className="rounded-lg border p-3 text-sm">
+                    {paymentMethod.brand?.toUpperCase() || "Tarjeta"} terminada en {paymentMethod.last4 || "****"}
+                    {paymentMethod.is_default ? " · Predeterminada" : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {setupSecret && (
+              <div className="rounded-lg border p-4">
+                <StripeElementsPanel
+                  clientSecret={setupSecret}
+                  mode="setup"
+                  buttonLabel="Guardar tarjeta"
+                  onSuccess={() => {
+                    toast({ title: "Tarjeta guardada", description: "Ya puedes usarla para tus reservas." });
+                    setSetupSecret(null);
+                    router.refresh();
+                  }}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

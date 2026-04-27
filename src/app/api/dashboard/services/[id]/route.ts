@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthenticatedContext } from "@/lib/server-authz";
+import { getAuthenticatedContext, isSubscriptionAccessible } from "@/lib/server-authz";
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
@@ -45,6 +45,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const context = await assertServiceOwner(id);
   if (context.response) return context.response;
 
+  const { data: subscription } = await context.supabase
+    .from("shop_subscriptions")
+    .select("status, current_period_end")
+    .eq("shop_id", context.service.shop_id)
+    .maybeSingle();
+
+  if (!isSubscriptionAccessible(subscription?.status, subscription?.current_period_end)) {
+    return NextResponse.json({ error: "Tu suscripción no está activa." }, { status: 402 });
+  }
+
   const { data, error } = await context.supabase
     .from("services")
     .update(parsed.data)
@@ -60,6 +70,16 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const context = await assertServiceOwner(id);
   if (context.response) return context.response;
+
+  const { data: subscription } = await context.supabase
+    .from("shop_subscriptions")
+    .select("status, current_period_end")
+    .eq("shop_id", context.service.shop_id)
+    .maybeSingle();
+
+  if (!isSubscriptionAccessible(subscription?.status, subscription?.current_period_end)) {
+    return NextResponse.json({ error: "Tu suscripción no está activa." }, { status: 402 });
+  }
 
   const { error } = await context.supabase
     .from("services")

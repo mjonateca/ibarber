@@ -17,6 +17,9 @@ export type BookingStatus =
   | "cancelled";
 
 export type DepositStatus = "none" | "paid" | "refunded";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+export type SubscriptionStatus = "trial" | "active" | "past_due" | "cancelled" | "expired";
+export type OnlinePaymentMode = "disabled" | "optional" | "required";
 export type NotificationType =
   | "booking_confirmed"
   | "booking_reminder"
@@ -46,6 +49,8 @@ export interface Shop {
   opening_hours: Json;
   deposit_required: boolean;
   deposit_amount: number;
+  payments_enabled: boolean;
+  online_payment_mode: OnlinePaymentMode;
   created_at: string;
 }
 
@@ -96,6 +101,13 @@ export interface Booking {
   status: BookingStatus;
   deposit_status: DepositStatus;
   deposit_amount: number;
+  payment_status: PaymentStatus;
+  payment_required: boolean;
+  payment_amount: number;
+  payment_currency: string;
+  paid_at: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
   whatsapp_reminder_sent: boolean;
   created_at: string;
 }
@@ -207,6 +219,83 @@ export interface Review {
   created_at: string;
 }
 
+export interface PlatformBillingSettings {
+  id: number;
+  trial_days: number;
+  monthly_price: number;
+  currency: string;
+  stripe_price_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShopSubscription {
+  id: string;
+  shop_id: string;
+  status: SubscriptionStatus;
+  trial_ends_at: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  monthly_price: number;
+  currency: string;
+  last_payment_error: string | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShopPaymentMethod {
+  id: string;
+  shop_id: string;
+  stripe_customer_id: string | null;
+  stripe_payment_method_id: string;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientPaymentMethod {
+  id: string;
+  client_id: string;
+  stripe_customer_id: string | null;
+  stripe_payment_method_id: string;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingPayment {
+  id: string;
+  booking_id: string;
+  shop_id: string;
+  client_id: string;
+  provider: string;
+  stripe_customer_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_payment_method_id: string | null;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  failure_reason: string | null;
+  refunded_amount: number;
+  metadata: Json;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Insert types ---
 
 export type ShopInsert = Omit<Shop, "id" | "created_at">;
@@ -222,6 +311,11 @@ export type BarberAvailabilityInsert = Omit<BarberAvailability, "id" | "created_
 export type BarberTimeBlockInsert = Omit<BarberTimeBlock, "id" | "created_at">;
 export type NotificationEventInsert = Omit<NotificationEvent, "id" | "created_at">;
 export type NotificationTemplateInsert = Omit<NotificationTemplate, "id" | "created_at" | "updated_at">;
+export type PlatformBillingSettingsInsert = Omit<PlatformBillingSettings, "created_at" | "updated_at">;
+export type ShopSubscriptionInsert = Omit<ShopSubscription, "id" | "created_at" | "updated_at">;
+export type ShopPaymentMethodInsert = Omit<ShopPaymentMethod, "id" | "created_at" | "updated_at">;
+export type ClientPaymentMethodInsert = Omit<ClientPaymentMethod, "id" | "created_at" | "updated_at">;
+export type BookingPaymentInsert = Omit<BookingPayment, "id" | "created_at" | "updated_at">;
 
 // --- Supabase Database type (for typed client) ---
 
@@ -297,6 +391,31 @@ export interface Database {
         Row: NotificationTemplate;
         Insert: NotificationTemplateInsert;
         Update: Partial<NotificationTemplateInsert>;
+      };
+      platform_billing_settings: {
+        Row: PlatformBillingSettings;
+        Insert: PlatformBillingSettingsInsert;
+        Update: Partial<PlatformBillingSettingsInsert>;
+      };
+      shop_subscriptions: {
+        Row: ShopSubscription;
+        Insert: ShopSubscriptionInsert;
+        Update: Partial<ShopSubscriptionInsert>;
+      };
+      shop_payment_methods: {
+        Row: ShopPaymentMethod;
+        Insert: ShopPaymentMethodInsert;
+        Update: Partial<ShopPaymentMethodInsert>;
+      };
+      client_payment_methods: {
+        Row: ClientPaymentMethod;
+        Insert: ClientPaymentMethodInsert;
+        Update: Partial<ClientPaymentMethodInsert>;
+      };
+      booking_payments: {
+        Row: BookingPayment;
+        Insert: BookingPaymentInsert;
+        Update: Partial<BookingPaymentInsert>;
       };
     };
   };
