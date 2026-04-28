@@ -3,12 +3,12 @@ import Stripe from "stripe";
 
 let stripeClient: Stripe | null = null;
 
+export function getStripePublishableKey() {
+  return process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || "";
+}
+
 export function isStripeConfigured() {
-  return Boolean(
-    process.env.STRIPE_SECRET_KEY &&
-      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY &&
-      process.env.STRIPE_WEBHOOK_SECRET
-  );
+  return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
 export function getStripe() {
