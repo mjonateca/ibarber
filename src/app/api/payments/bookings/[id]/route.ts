@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { ensureClientStripeCustomer } from "@/lib/billing";
 import { getStripe, isStripeConfigured, toStripeAmount } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

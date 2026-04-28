@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireOwnedShop } from "@/lib/server-authz";
 import { getAppBaseUrl, getStripe, isStripeConfigured } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+
 export async function POST() {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: "Stripe no está configurado todavía." }, { status: 503 });

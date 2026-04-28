@@ -10,6 +10,8 @@ import {
 } from "@/lib/billing";
 import { getStripe } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = (await headers()).get("stripe-signature");

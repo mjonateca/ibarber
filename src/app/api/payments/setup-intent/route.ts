@@ -3,6 +3,8 @@ import { getAuthenticatedContext } from "@/lib/server-authz";
 import { ensureClientStripeCustomer } from "@/lib/billing";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+
 export async function POST() {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: "Stripe no está configurado todavía." }, { status: 503 });
