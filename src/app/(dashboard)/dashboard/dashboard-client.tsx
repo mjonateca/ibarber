@@ -405,7 +405,7 @@ export default function DashboardClient({
     const response = await fetch("/api/dashboard/shop", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: form.get("address"), phone: form.get("phone"), description: form.get("description") }),
+      body: JSON.stringify({ address: form.get("address"), phone: form.get("phone"), description: form.get("description"), maps_url: form.get("maps_url") || null }),
     });
     const payload = await response.json().catch(() => ({}));
     setSavingSettings(false);

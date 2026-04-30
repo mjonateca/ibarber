@@ -304,13 +304,13 @@ export type ShopInsert = Omit<Shop, "id" | "created_at">;
 export type BarberInsert = Omit<Barber, "id" | "created_at">;
 export interface BarberRating {
   id: string;
-  shop_id: string;
   barber_id: string;
   client_id: string;
-  booking_id: string | null;
+  booking_id: string;
   rating: number;
   comment: string | null;
   created_at: string;
+  barbers?: { id: string; display_name: string; shop_id: string } | null;
 }
 
 export interface EmailNotification {

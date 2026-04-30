@@ -231,7 +231,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ? admin.from("clients").select("id,name,phone,whatsapp,city,country_name").in("id", clientIds).limit(100)
       : Promise.resolve({ data: [] }),
     admin.from("notification_events").select("*").eq("shop_id", shop.id).order("created_at", { ascending: false }).limit(20),
-    admin.from("barber_ratings").select("*").eq("shop_id", shop.id).order("created_at", { ascending: false }).limit(200),
+    admin.from("reviews").select("*, barbers!inner(id, display_name, shop_id)").eq("barbers.shop_id", shop.id).order("created_at", { ascending: false }).limit(200),
     admin.from("email_notifications").select("*").eq("shop_id", shop.id).order("created_at", { ascending: false }).limit(50),
   ]);
 
