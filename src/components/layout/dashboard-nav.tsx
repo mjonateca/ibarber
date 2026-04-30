@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, Calendar, LayoutDashboard, LogOut, Scissors, Settings, UserRound, Users } from "lucide-react";
+import { Calendar, Clock, LayoutDashboard, LogOut, Mail, Scissors, Settings, UserRound, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { AccountRole } from "@/types/database";
@@ -19,15 +19,15 @@ const shopNavItems: NavItem[] = [
   { tab: "services", label: "Servicios", icon: Scissors },
   { tab: "barbers", label: "Barberos", icon: UserRound },
   { tab: "clients", label: "Clientes", icon: Users },
-  { tab: "schedule", label: "Horarios", icon: Calendar },
-  { tab: "whatsapp", label: "WhatsApp", icon: Bell },
+  { tab: "schedule", label: "Horarios", icon: Clock },
+  { tab: "email", label: "Email", icon: Mail },
   { tab: "settings", label: "Ajustes", icon: Settings },
 ];
 
 const clientNavItems: NavItem[] = [
   { tab: "summary", label: "Cerca de mí", icon: LayoutDashboard },
   { tab: "bookings", label: "Reservas", icon: Calendar },
-  { tab: "favorites", label: "Favoritos", icon: Bell },
+  { tab: "favorites", label: "Favoritos", icon: Mail },
   { tab: "profile", label: "Perfil", icon: UserRound },
 ];
 

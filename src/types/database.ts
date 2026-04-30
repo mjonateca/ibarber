@@ -301,6 +301,32 @@ export interface BookingPayment {
 
 export type ShopInsert = Omit<Shop, "id" | "created_at">;
 export type BarberInsert = Omit<Barber, "id" | "created_at">;
+export interface BarberRating {
+  id: string;
+  shop_id: string;
+  barber_id: string;
+  client_id: string;
+  booking_id: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface EmailNotification {
+  id: string;
+  shop_id: string;
+  booking_id: string | null;
+  client_id: string | null;
+  type: string;
+  status: string;
+  recipient_email: string | null;
+  recipient_name: string | null;
+  sent_at: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+
 export type ServiceInsert = Omit<Service, "id" | "created_at">;
 export type BookingInsert = Omit<Booking, "id" | "created_at">;
 export type ClientInsert = Omit<Client, "id" | "created_at">;

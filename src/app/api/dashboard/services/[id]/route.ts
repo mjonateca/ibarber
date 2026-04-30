@@ -71,21 +71,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const context = await assertServiceOwner(id);
   if (context.response) return context.response;
 
-  const { data: subscription } = await context.supabase
-    .from("shop_subscriptions")
-    .select("status, current_period_end")
-    .eq("shop_id", context.service.shop_id)
-    .maybeSingle();
-
-  if (!isSubscriptionAccessible(subscription?.status, subscription?.current_period_end)) {
-    return NextResponse.json({ error: "Tu suscripción no está activa." }, { status: 402 });
-  }
-
-  const { error } = await context.supabase
-    .from("services")
-    .update({ is_active: false, is_visible: false })
-    .eq("id", id);
-
+  const { error } = await context.supabase.from("services").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
