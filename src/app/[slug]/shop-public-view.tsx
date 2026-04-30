@@ -38,6 +38,26 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
     return activeServices.filter((s) => serviceIds.has(s.id));
   }
 
+  // Build Google Maps embed src: prefer maps_url converted to embed, fallback to address
+  function getMapsEmbedSrc(): string | null {
+    if (shop.maps_url) {
+      try {
+        const u = new URL(shop.maps_url);
+        // Already embed format
+        if (u.searchParams.get("output") === "embed" || u.pathname.includes("/embed")) return shop.maps_url;
+        // Add output=embed to any google maps URL
+        u.searchParams.set("output", "embed");
+        return u.toString();
+      } catch { /* invalid URL */ }
+    }
+    if (shop.address) {
+      return `https://maps.google.com/maps?q=${encodeURIComponent(shop.address)}&output=embed`;
+    }
+    return null;
+  }
+  const mapsEmbedSrc = getMapsEmbedSrc();
+  const mapsExternalUrl = shop.maps_url || (shop.address ? `https://maps.google.com/maps?q=${encodeURIComponent(shop.address)}` : null);
+
   return (
     <div className="min-h-screen bg-[hsl(var(--muted))]">
       {/* Header de la barbería */}
@@ -201,6 +221,44 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
             )}
           </div>
         </section>
+
+        {/* Mapa */}
+        {mapsEmbedSrc && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Ubicación</h2>
+              {mapsExternalUrl && (
+                <a
+                  href={mapsExternalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Abrir en Google Maps
+                </a>
+              )}
+            </div>
+            <div className="overflow-hidden rounded-xl border shadow-sm">
+              <iframe
+                src={mapsEmbedSrc}
+                width="100%"
+                height="300"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Ubicación de la barbería"
+              />
+            </div>
+            {shop.address && (
+              <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                {shop.address}
+              </p>
+            )}
+          </section>
+        )}
 
         {/* CTA Reservar */}
         <div className="pb-8">
