@@ -39,6 +39,7 @@ export interface Shop {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  maps_url: string | null;
   phone: string | null;
   whatsapp: string | null;
   country_code: string | null;

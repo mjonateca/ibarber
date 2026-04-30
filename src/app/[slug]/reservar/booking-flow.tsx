@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { addDays, format, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, CheckCircle2, Clock, Home, Loader2, Scissors, UserRound } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, Home, Loader2, Scissors, Star, UserRound } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
@@ -233,9 +234,11 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
     <div className="min-h-screen bg-[hsl(var(--muted))]">
       <header className="relative overflow-hidden bg-[hsl(var(--foreground))] text-white">
         <div
-          className="absolute inset-0 opacity-28"
+          className="absolute inset-0 opacity-30"
           style={{
-            backgroundImage: "url('https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1200&q=80')",
+            backgroundImage: shop.banner_url
+              ? `url('${shop.banner_url}')`
+              : "url('https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=1200&q=80')",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
@@ -303,8 +306,18 @@ export default function BookingFlow({ shop, client, preselectedBarberId }: Props
                     className="rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary"
                     type="button"
                   >
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <UserRound className="h-6 w-6" />
+                    <div className="relative mb-3 h-16 w-16 overflow-hidden rounded-xl bg-muted flex items-center justify-center">
+                      {barber.avatar_url ? (
+                        <Image src={barber.avatar_url} alt={barber.display_name} width={64} height={64} className="object-cover w-full h-full" />
+                      ) : (
+                        <UserRound className="h-7 w-7 text-muted-foreground" />
+                      )}
+                      {barber.rating > 0 && (
+                        <span className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[9px] font-semibold text-white leading-none">
+                          <Star className="h-2 w-2 fill-amber-400 text-amber-400" />
+                          {barber.rating.toFixed(1)}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm font-medium">{barber.display_name}</p>
                     {barber.specialty && <p className="mt-1 text-xs text-primary">{barber.specialty}</p>}

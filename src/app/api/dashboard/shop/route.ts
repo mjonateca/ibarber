@@ -14,6 +14,7 @@ const shopSchema = z.object({
   address: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   banner_url: z.string().url().nullable().optional(),
+  maps_url: z.string().nullable().optional(),
 });
 
 export async function PATCH(request: Request) {
