@@ -11,7 +11,7 @@ import {
   Clock,
   CreditCard,
   ExternalLink,
-  Image,
+  ImageIcon,
   Loader2,
   Scissors,
   Settings,
@@ -238,7 +238,7 @@ export default function DashboardClient({
   const [billingAction, setBillingAction] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
-  const [bannerPreview, setBannerPreview] = useState<string | null>((shop as any).banner_url || null);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(shop.banner_url || null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const [clientSearch, setClientSearch] = useState("");
 
@@ -439,7 +439,7 @@ export default function DashboardClient({
     setUploadingBanner(false);
     if (!res.ok) {
       toast({ variant: "destructive", title: "Error al subir imagen", description: payload.error || "Intenta de nuevo" });
-      setBannerPreview((shop as any).banner_url || null);
+      setBannerPreview(shop.banner_url || null);
       return;
     }
     const patchRes = await fetch("/api/dashboard/shop", {
@@ -1034,7 +1034,7 @@ export default function DashboardClient({
             >
               {!bannerPreview && (
                 <div className="text-center">
-                  <Image className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                  <ImageIcon aria-hidden="true" className="mx-auto h-8 w-8 text-muted-foreground/40" />
                   <p className="mt-1 text-xs text-muted-foreground">Sin banner</p>
                 </div>
               )}
