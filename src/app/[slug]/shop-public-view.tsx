@@ -38,25 +38,10 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
     return activeServices.filter((s) => serviceIds.has(s.id));
   }
 
-  // Build Google Maps embed src: prefer maps_url converted to embed, fallback to address
-  function getMapsEmbedSrc(): string | null {
-    if (shop.maps_url) {
-      try {
-        const u = new URL(shop.maps_url);
-        // Already embed format
-        if (u.searchParams.get("output") === "embed" || u.pathname.includes("/embed")) return shop.maps_url;
-        // Add output=embed to any google maps URL
-        u.searchParams.set("output", "embed");
-        return u.toString();
-      } catch { /* invalid URL */ }
-    }
-    if (shop.address) {
-      return `https://maps.google.com/maps?q=${encodeURIComponent(shop.address)}&output=embed`;
-    }
-    return null;
-  }
-  const mapsEmbedSrc = getMapsEmbedSrc();
-  const mapsExternalUrl = shop.maps_url || (shop.address ? `https://maps.google.com/maps?q=${encodeURIComponent(shop.address)}` : null);
+  // Only use maps_url directly — must be a Google Maps embed URL (maps/embed?pb=...)
+  // Users get this from: Google Maps → Share → Embed a map → copy the src attribute
+  const mapsEmbedSrc = shop.maps_url || null;
+  const mapsExternalUrl = shop.maps_url || null;
 
   return (
     <div className="min-h-screen bg-[hsl(var(--muted))]">

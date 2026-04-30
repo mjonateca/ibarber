@@ -898,7 +898,11 @@ export default function DashboardClient({
                   <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm font-medium">{shopState.name}</p>
                 </div>
                 <Field name="address" label="Dirección" defaultValue={shopState.address || ""} placeholder="Calle, número, ciudad" />
-                <Field name="maps_url" label="Enlace Google Maps" defaultValue={shopState.maps_url || ""} placeholder="https://maps.google.com/..." />
+                <div className="space-y-1">
+                  <Label htmlFor="maps_url" className="text-sm">Embed de Google Maps</Label>
+                  <Input id="maps_url" name="maps_url" defaultValue={shopState.maps_url || ""} placeholder="https://www.google.com/maps/embed?pb=..." />
+                  <p className="text-xs text-muted-foreground">Google Maps → tu local → Compartir → Insertar mapa → copia el <code>src</code> del iframe</p>
+                </div>
                 <Field name="phone" label="Teléfono" defaultValue={shopState.phone || ""} placeholder="+1 809 000 0000" />
                 <div className="space-y-1">
                   <Label htmlFor="description">Descripción pública</Label>
