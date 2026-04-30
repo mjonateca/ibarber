@@ -8,6 +8,7 @@ export const demoShop: Shop = {
   name: "Barber King Santiago",
   slug: "barber-king",
   logo_url: null,
+  banner_url: null,
   address: "Calle El Sol #45, Santiago, RD",
   lat: 19.4517,
   lng: -70.6970,
