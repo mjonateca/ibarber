@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/complete-bookings",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
