@@ -35,6 +35,7 @@ export interface Shop {
   name: string;
   slug: string;
   logo_url: string | null;
+  banner_url: string | null;
   address: string | null;
   lat: number | null;
   lng: number | null;

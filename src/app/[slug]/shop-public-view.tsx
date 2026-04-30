@@ -46,7 +46,7 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
           className="absolute inset-0 opacity-30"
           style={{
             backgroundImage:
-              "url('https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=1200&q=80')",
+              shop.banner_url ? `url('${shop.banner_url}')` : "url('https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=1200&q=80')",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
