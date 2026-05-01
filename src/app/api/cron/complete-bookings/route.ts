@@ -30,15 +30,15 @@ function buildReviewEmailHtml({
     <tr><td align="center">
       <table width="100%" style="max-width:520px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)">
         <tr><td style="background:#0d9488;padding:28px 32px;text-align:center">
-          <p style="margin:0;font-size:32px">â­</p>
-          <h1 style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:700">Â¿QuÃ© tal tu visita?</h1>
+          <p style="margin:0;font-size:32px">Ã¢Â­Â</p>
+          <h1 style="margin:8px 0 0;color:#fff;font-size:20px;font-weight:700">ÃÂ¿QuÃÂ© tal tu visita?</h1>
           <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:14px">${shopName}</p>
         </td></tr>
         <tr><td style="padding:28px 32px">
           <p style="margin:0 0 16px;color:#374151;font-size:15px">Hola <strong>${clientName}</strong>,</p>
           <p style="margin:0 0 20px;color:#374151;font-size:15px">
             Tu cita del <strong>${formattedDate}</strong> con <strong>${barberName}</strong> (${serviceName}) ha finalizado.
-            Nos encantarÃ­a saber tu opiniÃ³n.
+            Nos encantarÃÂ­a saber tu opiniÃÂ³n.
           </p>
           <table width="100%" style="background:#f9fafb;border-radius:8px;padding:16px" cellpadding="0" cellspacing="0">
             <tr><td style="padding:6px 0"><span style="color:#6b7280;font-size:13px">Barbero</span><br><strong style="color:#111827;font-size:15px">${barberName}</strong></td></tr>
@@ -47,11 +47,11 @@ function buildReviewEmailHtml({
           </table>
           <div style="text-align:center;margin-top:24px">
             <a href="${dashboardUrl}" style="background:#0d9488;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">
-              Dejar mi reseÃ±a
+              Dejar mi reseÃÂ±a
             </a>
           </div>
           <p style="margin:20px 0 0;color:#6b7280;font-size:13px;text-align:center">
-            Tu opiniÃ³n ayuda a otros clientes y mejora nuestro servicio.
+            Tu opiniÃÂ³n ayuda a otros clientes y mejora nuestro servicio.
           </p>
         </td></tr>
         <tr><td style="padding:16px 32px;border-top:1px solid #f3f4f6;text-align:center">
@@ -137,8 +137,8 @@ export async function GET(request: Request) {
           const barberName =
             (booking.barbers as unknown as { display_name: string } | null)?.display_name || "Tu barbero";
           const serviceName = (booking.services as unknown as { name: string } | null)?.name || "Servicio";
-          const shopObj = booking.shops as { name: string; slug: string } | null;
-          const shopName = shopObj?.name || "La barberÃ­a";
+          const shopObj = booking.shops as unknown as { name: string; slug: string } | null;
+          const shopName = shopObj?.name || "La barberÃÂ­a";
           const shopSlug = shopObj?.slug || "";
 
           const html = buildReviewEmailHtml({
@@ -153,7 +153,7 @@ export async function GET(request: Request) {
           const result = await resend.emails.send({
             from: `${shopName} <${fromAddress}>`,
             to: recipientEmail,
-            subject: `Â¿CÃ³mo estuvo tu visita a ${shopName}?`,
+            subject: `ÃÂ¿CÃÂ³mo estuvo tu visita a ${shopName}?`,
             html,
           });
 
