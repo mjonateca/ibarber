@@ -135,7 +135,7 @@ export async function GET(request: Request) {
 
           const clientName = clientData.name || "Cliente";
           const barberName =
-            (booking.barbers as { display_name: string } | null)?.display_name || "Tu barbero";
+            (booking.barbers as unknown as { display_name: string } | null)?.display_name || "Tu barbero";
           const serviceName = (booking.services as { name: string } | null)?.name || "Servicio";
           const shopObj = booking.shops as { name: string; slug: string } | null;
           const shopName = shopObj?.name || "La barbería";
