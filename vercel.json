@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/complete-bookings",
-      "schedule": "*/30 * * * *"
-    }
-  ]
-}
+{"crons":[{"path":"/api/cron/complete-bookings","schedule":"0 3 * * *"}]}
