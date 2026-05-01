@@ -29,8 +29,8 @@ const sendSchema = z.object({
 
 const LABELS: Record<string, string> = {
   reminder: "Recordatorio de cita",
-  confirmation: "ConfirmaciÃ³n de reserva",
-  cancellation: "CancelaciÃ³n de cita",
+  confirmation: "ConfirmaciÃÂ³n de reserva",
+  cancellation: "CancelaciÃÂ³n de cita",
 };
 
 function buildEmailHtml({
@@ -54,12 +54,12 @@ function buildEmailHtml({
 }) {
   const formattedDate = format(new Date(date + "T12:00:00"), "EEEE d 'de' MMMM yyyy", { locale: es });
   const formattedTime = startTime.slice(0, 5);
-  const subject = LABELS[type] || "NotificaciÃ³n de iBarber";
+  const subject = LABELS[type] || "NotificaciÃÂ³n de iBarber";
   const isReminder = type === "reminder";
   const isCancellation = type === "cancellation";
 
   const color = isCancellation ? "#ef4444" : "#0d9488";
-  const emoji = isCancellation ? "â" : isReminder ? "â°" : "â";
+  const emoji = isCancellation ? "Ã¢ÂÂ" : isReminder ? "Ã¢ÂÂ°" : "Ã¢ÂÂ";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -76,8 +76,8 @@ function buildEmailHtml({
         <tr><td style="padding:28px 32px">
           <p style="margin:0 0 20px;color:#374151;font-size:15px">Hola <strong>${clientName}</strong>,</p>
           ${isCancellation
-            ? `<p style="margin:0 0 20px;color:#374151;font-size:15px">Tu cita ha sido cancelada. Si tienes preguntas, contÃ¡ctanos.</p>`
-            : `<p style="margin:0 0 20px;color:#374151;font-size:15px">${isReminder ? "Te recordamos que tienes una cita prÃ³ximamente:" : "Tu reserva ha sido confirmada:"}</p>`
+            ? `<p style="margin:0 0 20px;color:#374151;font-size:15px">Tu cita ha sido cancelada. Si tienes preguntas, contÃÂ¡ctanos.</p>`
+            : `<p style="margin:0 0 20px;color:#374151;font-size:15px">${isReminder ? "Te recordamos que tienes una cita prÃÂ³ximamente:" : "Tu reserva ha sido confirmada:"}</p>`
           }
           <table width="100%" style="background:#f9fafb;border-radius:8px;padding:16px" cellpadding="0" cellspacing="0">
             <tr><td style="padding:6px 0"><span style="color:#6b7280;font-size:13px">Barbero</span><br><strong style="color:#111827;font-size:15px">${barberName}</strong></td></tr>
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
   if (context.response) return context.response;
 
   const parsed = sendSchema.safeParse(await request.json());
-  if (!parsed.success) return NextResponse.json({ error: "Datos invÃ¡lidos" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Datos invÃÂ¡lidos" }, { status: 400 });
 
   const admin = await createAdminClient();
 
@@ -141,12 +141,12 @@ export async function POST(request: Request) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const barberName = (booking.barbers as unknown as { display_name: string } | null)?.display_name || "Tu barbero";
       const serviceName = (booking.services as unknown as { name: string } | null)?.name || "Servicio";
-      const subject = LABELS[parsed.data.type] || "NotificaciÃ³n de iBarber";
+      const subject = LABELS[parsed.data.type] || "NotificaciÃÂ³n de iBarber";
 
       const html = buildEmailHtml({
         type: parsed.data.type,
         clientName: recipientName,
-        shopName: context.shop.name,
+        shopName: (context.shop as unknown as { name: string }).name,
         barberName,
         serviceName,
         date: booking.date as string,
@@ -169,7 +169,7 @@ export async function POST(request: Request) {
       status = "failed";
     }
   } else if (!recipientEmail) {
-    errorMessage = "No se encontrÃ³ email del cliente";
+    errorMessage = "No se encontrÃÂ³ email del cliente";
   } else {
     errorMessage = "RESEND_API_KEY no configurada";
   }
