@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     .single();
 
   let recipientEmail: string | null = null;
-  let recipientName = clientData?.name || "Cliente";
+  const recipientName = clientData?.name || "Cliente";
 
   if (clientData?.user_id) {
     const { data: userData } = await admin.auth.admin.getUserById(clientData.user_id);
