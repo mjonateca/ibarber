@@ -38,14 +38,26 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
     return activeServices.filter((s) => serviceIds.has(s.id));
   }
 
-  // Only use maps_url directly — must be a Google Maps embed URL (maps/embed?pb=...)
-  // Users get this from: Google Maps → Share → Embed a map → copy the src attribute
-  const mapsEmbedSrc = shop.maps_url || null;
+  // Only use maps_url directly â must be a Google Maps embed URL (maps/embed?pb=...)
+  // Users get this from: Google Maps â Share â Embed a map â copy the src attribute
+  const mapsEmbedSrc = (() => {
+    const url = shop.maps_url;
+    if (!url) return null;
+    if (url.includes('/embed')) return url;
+    try {
+      const u = new URL(url);
+      const q = u.searchParams.get('q');
+      if (q) return `https://maps.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=es`;
+      const match = url.match(/@([-\d.]+),([-\d.]+)/);
+      if (match) return `https://maps.google.com/maps?q=${match[1]},${match[2]}&output=embed&hl=es`;
+    } catch(e) {}
+    return url.includes('?') ? url + '&output=embed' : url + '?output=embed';
+  })();
   const mapsExternalUrl = shop.maps_url || null;
 
   return (
     <div className="min-h-screen bg-[hsl(var(--muted))]">
-      {/* Header de la barbería */}
+      {/* Header de la barberÃ­a */}
       <div className="relative overflow-hidden bg-[hsl(var(--foreground))] text-white">
         <div
           className="absolute inset-0 opacity-30"
@@ -100,7 +112,7 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
               {!shop.address && shop.maps_url && (
                 <a href={shop.maps_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-zinc-300 mt-1 hover:text-white">
                   <MapPin className="h-3.5 w-3.5" />
-                  Ver ubicación en Google Maps <ExternalLink className="h-3 w-3" />
+                  Ver ubicaciÃ³n en Google Maps <ExternalLink className="h-3 w-3" />
                 </a>
               )}
               {shop.phone && (
@@ -200,7 +212,7 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
             {activeServices.length === 0 && (
               <Card className="border-none shadow-none">
                 <CardContent className="p-4 text-sm text-muted-foreground">
-                  Esta barbería aún no tiene servicios activos.
+                  Esta barberÃ­a aÃºn no tiene servicios activos.
                 </CardContent>
               </Card>
             )}
@@ -211,7 +223,7 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
         {mapsEmbedSrc && (
           <section>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Ubicación</h2>
+              <h2 className="text-lg font-semibold">UbicaciÃ³n</h2>
               {mapsExternalUrl && (
                 <a
                   href={mapsExternalUrl}
@@ -233,7 +245,7 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
                 allowFullScreen
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
-                title="Ubicación de la barbería"
+                title="UbicaciÃ³n de la barberÃ­a"
               />
             </div>
             {shop.address && (
@@ -261,14 +273,14 @@ export default function ShopPublicView({ shop, viewerRole }: Props) {
 
           {viewerRole && viewerRole !== "client" && (
             <p className="mt-3 rounded-lg border bg-background p-3 text-center text-xs text-muted-foreground">
-              Estás viendo esta página como {viewerRole === "barber" ? "barbero" : "barbería"}.
+              EstÃ¡s viendo esta pÃ¡gina como {viewerRole === "barber" ? "barbero" : "barberÃ­a"}.
               Para reservar, usa una cuenta cliente.
             </p>
           )}
 
           {shop.deposit_required && shop.deposit_amount > 0 && (
             <p className="text-xs text-center text-muted-foreground mt-3">
-              Se requiere depósito de {formatCurrency(shop.deposit_amount, "DOP")} al reservar
+              Se requiere depÃ³sito de {formatCurrency(shop.deposit_amount, "DOP")} al reservar
             </p>
           )}
         </div>
