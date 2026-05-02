@@ -38,7 +38,7 @@ type ListedShop = {
 export default async function HomePage({ searchParams }: Props) {
   const params = await searchParams;
   const selectedCountry = params.country || "DO";
-  const selectedCity = params.city || "Santo Domingo";
+  const selectedCity = params.city || "tu ciudad";
   const cities = getCitiesForCountry(selectedCountry);
 
   let shops: ListedShop[] = [];
@@ -89,7 +89,7 @@ export default async function HomePage({ searchParams }: Props) {
                 iBarber
               </span>
               <span className="text-[10px] text-muted-foreground font-medium tracking-wide hidden sm:block">
-                República Dominicana
+                RepÃºblica local
               </span>
             </div>
           </Link>
@@ -100,7 +100,7 @@ export default async function HomePage({ searchParams }: Props) {
               size="sm"
               className="font-medium text-muted-foreground hover:text-foreground"
             >
-              <Link href="/login">Iniciar sesión</Link>
+              <Link href="/login">Iniciar sesiÃ³n</Link>
             </Button>
             <Button
               asChild
@@ -152,7 +152,7 @@ export default async function HomePage({ searchParams }: Props) {
               </div>
 
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.08] tracking-tight mb-5">
-                Tu barbería<br />
+                Tu barberÃ­a<br />
                 favorita,{" "}
                 <span style={{ color: "hsl(44, 94%, 60%)" }}>
                   a un clic
@@ -160,14 +160,14 @@ export default async function HomePage({ searchParams }: Props) {
               </h1>
 
               <p className="text-white/65 text-lg mb-8 leading-relaxed max-w-md">
-                Encuentra las mejores barberías de República Dominicana, elige
+                Encuentra las mejores barberÃ­as de RepÃºblica local, elige
                 tu barbero y reserva en segundos. Sin llamadas, sin esperas.
               </p>
 
               <div className="flex flex-wrap gap-x-5 gap-y-2 mb-10">
                 {[
                   "Sin comisiones",
-                  "Confirmación instantánea",
+                  "ConfirmaciÃ³n instantÃ¡nea",
                   "100% gratis para clientes",
                 ].map((text) => (
                   <div key={text} className="flex items-center gap-1.5 text-white/65 text-sm">
@@ -216,7 +216,7 @@ export default async function HomePage({ searchParams }: Props) {
               </div>
             </div>
 
-            {/* Right — decorative preview card */}
+            {/* Right â decorative preview card */}
             <div className="hidden md:flex items-center justify-center">
               <div className="relative w-full max-w-sm">
                 <div className="rounded-2xl border border-white/15 bg-white/8 backdrop-blur-xl p-6 shadow-2xl">
@@ -228,9 +228,9 @@ export default async function HomePage({ searchParams }: Props) {
                       B
                     </div>
                     <div>
-                      <p className="text-white font-bold text-sm">Barbería Premium</p>
+                      <p className="text-white font-bold text-sm">BarberÃ­a Premium</p>
                       <p className="text-white/50 text-xs flex items-center gap-1">
-                        <MapPin className="h-3 w-3" /> Santo Domingo
+                        <MapPin className="h-3 w-3" /> tu ciudad
                       </p>
                     </div>
                     <div className="ml-auto flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
@@ -240,9 +240,9 @@ export default async function HomePage({ searchParams }: Props) {
                   </div>
                   <div className="space-y-2.5 mb-5">
                     {[
-                      { name: "Corte clásico", price: "RD$350", time: "30 min" },
-                      { name: "Fade + barba", price: "RD$550", time: "45 min" },
-                      { name: "Diseño completo", price: "RD$750", time: "60 min" },
+                      { name: "Corte clÃ¡sico", price: "$350", time: "30 min" },
+                      { name: "Fade + barba", price: "$550", time: "45 min" },
+                      { name: "DiseÃ±o completo", price: "$750", time: "60 min" },
                     ].map((s) => (
                       <div key={s.name} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5">
                         <span className="text-white/85 text-sm font-medium">{s.name}</span>
@@ -259,7 +259,7 @@ export default async function HomePage({ searchParams }: Props) {
                     className="w-full py-2.5 rounded-xl text-center font-bold text-sm shadow-md cursor-pointer"
                     style={{ background: "hsl(44,94%,52%)", color: "#0d1117" }}
                   >
-                    Reservar cita →
+                    Reservar cita â
                   </div>
                 </div>
                 {/* Floating badge */}
@@ -269,7 +269,7 @@ export default async function HomePage({ searchParams }: Props) {
                   </div>
                   <div>
                     <p className="text-xs font-bold text-slate-800">Reserva confirmada</p>
-                    <p className="text-[10px] text-slate-500">Hoy · 3:00 PM</p>
+                    <p className="text-[10px] text-slate-500">Hoy Â· 3:00 PM</p>
                   </div>
                 </div>
               </div>
@@ -282,7 +282,7 @@ export default async function HomePage({ searchParams }: Props) {
       <section className="border-b bg-card">
         <div className="max-w-6xl mx-auto px-4 py-5 grid grid-cols-3 divide-x divide-border">
           {[
-            { icon: Scissors, value: shops.length > 0 ? `${shops.length}+` : "10+", label: "Barberías activas" },
+            { icon: Scissors, value: shops.length > 0 ? `${shops.length}+` : "10+", label: "BarberÃ­as activas" },
             { icon: Users, value: "500+", label: "Clientes atendidos" },
             { icon: Clock, value: "24/7", label: "Reservas online" },
           ].map(({ icon: Icon, value, label }) => (
@@ -299,24 +299,24 @@ export default async function HomePage({ searchParams }: Props) {
         </div>
       </section>
 
-      {/* CÓMO FUNCIONA */}
+      {/* CÃMO FUNCIONA */}
       <section className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "hsl(174,72%,34%)" }}>
               Proceso simple
             </p>
-            <h2 className="text-3xl md:text-4xl font-black text-foreground">¿Cómo funciona?</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-foreground">Â¿CÃ³mo funciona?</h2>
             <p className="text-muted-foreground mt-3 max-w-md mx-auto">
-              Reserva tu próximo corte en menos de 2 minutos
+              Reserva tu prÃ³ximo corte en menos de 2 minutos
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
             {[
-              { step: "01", icon: Search, title: "Busca tu barbería", desc: "Filtra por ciudad y encuentra la barbería perfecta cerca de ti." },
-              { step: "02", icon: CalendarCheck, title: "Elige barbero y hora", desc: "Selecciona tu barbero favorito y el horario disponible que más te convenga." },
-              { step: "03", icon: Star, title: "Disfruta tu corte", desc: "Recibe confirmación al instante y llega a tu cita sin esperas." },
+              { step: "01", icon: Search, title: "Busca tu barberÃ­a", desc: "Filtra por ciudad y encuentra la barberÃ­a perfecta cerca de ti." },
+              { step: "02", icon: CalendarCheck, title: "Elige barbero y hora", desc: "Selecciona tu barbero favorito y el horario disponible que mÃ¡s te convenga." },
+              { step: "03", icon: Star, title: "Disfruta tu corte", desc: "Recibe confirmaciÃ³n al instante y llega a tu cita sin esperas." },
             ].map(({ step, icon: Icon, title, desc }) => (
               <div key={step} className="relative rounded-2xl border bg-card p-7 hover:border-primary/30 hover:shadow-lg transition-all duration-300 group">
                 <div className="flex items-start justify-between mb-5">
@@ -349,11 +349,11 @@ export default async function HomePage({ searchParams }: Props) {
               <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "hsl(174,72%,34%)" }}>
                 Disponibles ahora
               </p>
-              <h2 className="text-2xl font-black text-foreground">Barberías en {selectedCity}</h2>
+              <h2 className="text-2xl font-black text-foreground">BarberÃ­as en {selectedCity}</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 {shops.length > 0
                   ? `${shops.length} establecimiento${shops.length > 1 ? "s" : ""} verificado${shops.length > 1 ? "s" : ""}`
-                  : "Sin establecimientos en esta zona aún"}
+                  : "Sin establecimientos en esta zona aÃºn"}
               </p>
             </div>
             <Link
@@ -361,7 +361,7 @@ export default async function HomePage({ searchParams }: Props) {
               className="hidden sm:flex items-center gap-1.5 text-sm font-bold hover:underline underline-offset-4 transition-colors"
               style={{ color: "hsl(174,72%,34%)" }}
             >
-              Registrar mi barbería <ArrowRight className="h-4 w-4" />
+              Registrar mi barberÃ­a <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
@@ -370,10 +370,10 @@ export default async function HomePage({ searchParams }: Props) {
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "hsl(174,30%,93%)" }}>
                 <Scissors className="h-8 w-8" style={{ color: "hsl(174,72%,34%)" }} />
               </div>
-              <p className="font-bold text-lg mb-1">No hay barberías activas aquí</p>
+              <p className="font-bold text-lg mb-1">No hay barberÃ­as activas aquÃ­</p>
               <p className="text-sm text-muted-foreground mb-5">Prueba con otra ciudad o regresa pronto.</p>
               <Link href="/register" className="inline-flex items-center gap-1.5 text-sm font-bold hover:underline underline-offset-4" style={{ color: "hsl(174,72%,34%)" }}>
-                ¿Tienes una barbería? Regístrala gratis →
+                Â¿Tienes una barberÃ­a? RegÃ­strala gratis â
               </Link>
             </div>
           ) : (
@@ -418,7 +418,7 @@ export default async function HomePage({ searchParams }: Props) {
                         <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors leading-tight">{shop.name}</h3>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                           <MapPin className="h-3 w-3 flex-shrink-0" />
-                          <span className="truncate">{shop.city || "Ciudad"}{shop.country_name ? ` · ${shop.country_name}` : ""}</span>
+                          <span className="truncate">{shop.city || "Ciudad"}{shop.country_name ? ` Â· ${shop.country_name}` : ""}</span>
                         </p>
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed flex-1">
@@ -448,15 +448,15 @@ export default async function HomePage({ searchParams }: Props) {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "hsl(174,72%,34%)" }}>
-              Por qué iBarber
+              Por quÃ© iBarber
             </p>
             <h2 className="text-3xl md:text-4xl font-black text-foreground">Todo lo que necesitas</h2>
           </div>
           <div className="grid gap-5 md:grid-cols-3">
             {[
               { icon: Zap, title: "Reserva en segundos", desc: "Sin llamadas, sin WhatsApp. Elige hora disponible y confirma al instante.", accent: "hsl(44,94%,50%)", bg: "hsl(44,94%,96%)" },
-              { icon: Shield, title: "Sin comisiones", desc: "No cobramos comisión por cita. El 100% del pago va directo a la barbería.", accent: "hsl(174,72%,34%)", bg: "hsl(174,72%,96%)" },
-              { icon: TrendingUp, title: "Gestión inteligente", desc: "Las barberías gestionan su agenda, reducen no-shows y hacen crecer su negocio.", accent: "hsl(174,72%,34%)", bg: "hsl(174,72%,96%)" },
+              { icon: Shield, title: "Sin comisiones", desc: "No cobramos comisiÃ³n por cita. El 100% del pago va directo a la barberÃ­a.", accent: "hsl(174,72%,34%)", bg: "hsl(174,72%,96%)" },
+              { icon: TrendingUp, title: "GestiÃ³n inteligente", desc: "Las barberÃ­as gestionan su agenda, reducen no-shows y hacen crecer su negocio.", accent: "hsl(174,72%,34%)", bg: "hsl(174,72%,96%)" },
             ].map(({ icon: Icon, title, desc, accent, bg }) => (
               <div key={title} className="rounded-2xl border p-7 hover:shadow-md transition-all group">
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4 shadow-sm" style={{ background: bg, color: accent }}>
@@ -492,15 +492,15 @@ export default async function HomePage({ searchParams }: Props) {
                   Para propietarios
                 </div>
                 <h2 className="text-3xl md:text-4xl font-black text-white mb-4 leading-tight">
-                  ¿Tienes una barbería?{" "}
-                  <span style={{ color: "hsl(44, 94%, 60%)" }}>Regístrala gratis.</span>
+                  Â¿Tienes una barberÃ­a?{" "}
+                  <span style={{ color: "hsl(44, 94%, 60%)" }}>RegÃ­strala gratis.</span>
                 </h2>
                 <p className="text-white/60 text-base leading-relaxed">
                   Gestiona tu agenda, reduce las cancelaciones y recibe reservas online 24/7.
                   Sin mensualidades para empezar.
                 </p>
                 <div className="flex flex-wrap gap-4 mt-5">
-                  {["Agenda digital", "Pagos online", "Panel de análisis"].map((f) => (
+                  {["Agenda digital", "Pagos online", "Panel de anÃ¡lisis"].map((f) => (
                     <div key={f} className="flex items-center gap-1.5 text-white/65 text-sm">
                       <CheckCircle2 className="h-4 w-4" style={{ color: "hsl(44,94%,60%)" }} />
                       {f}
@@ -516,14 +516,14 @@ export default async function HomePage({ searchParams }: Props) {
                   style={{ background: "hsl(44, 94%, 52%)", color: "#0d1117" }}
                 >
                   <Link href="/register">
-                    Registrar mi barbería
+                    Registrar mi barberÃ­a
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
                 <Link href="/login" className="text-center text-sm font-semibold text-white/50 hover:text-white/80 transition-colors">
-                  Ya tengo cuenta → Iniciar sesión
+                  Ya tengo cuenta â Iniciar sesiÃ³n
                 </Link>
-                <p className="text-center text-xs text-white/35">Sin tarjeta de crédito · Gratis para empezar</p>
+                <p className="text-center text-xs text-white/35">Sin tarjeta de crÃ©dito Â· Gratis para empezar</p>
               </div>
             </div>
           </div>
@@ -542,7 +542,7 @@ export default async function HomePage({ searchParams }: Props) {
                 <span className="font-black text-base text-foreground">iBarber</span>
               </div>
               <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-                La plataforma de reservas para barberías de República Dominicana.
+                La plataforma de reservas para barberÃ­as de RepÃºblica local.
               </p>
             </div>
             <div className="flex gap-12">
@@ -550,9 +550,9 @@ export default async function HomePage({ searchParams }: Props) {
                 <p className="text-xs font-bold text-foreground mb-3 uppercase tracking-wider">Plataforma</p>
                 <div className="flex flex-col gap-2">
                   {[
-                    { href: "/login", label: "Iniciar sesión" },
+                    { href: "/login", label: "Iniciar sesiÃ³n" },
                     { href: "/register", label: "Registrarse" },
-                    { href: "/register", label: "Registrar barbería" },
+                    { href: "/register", label: "Registrar barberÃ­a" },
                   ].map((link) => (
                     <Link key={link.label} href={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                       {link.label}
@@ -564,9 +564,9 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
           <div className="border-t pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              © {new Date().getFullYear()} iBarber · Plataforma de reservas para barberías en República Dominicana
+              Â© {new Date().getFullYear()} iBarber Â· Plataforma de reservas para barberÃ­as en RepÃºblica local
             </p>
-            <p className="text-xs text-muted-foreground">República Dominicana 🇩🇴</p>
+            <p className="text-xs text-muted-foreground">RepÃºblica local ð©ð´</p>
           </div>
         </div>
       </footer>
