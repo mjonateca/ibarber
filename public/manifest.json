@@ -1,7 +1,7 @@
 {
   "name": "iBarber",
   "short_name": "iBarber",
-  "description": "Reserva citas en las mejores barberías de República Dominicana",
+  "description": "Reserva citas en las mejores barberías",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
