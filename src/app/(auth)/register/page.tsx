@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { COUNTRIES, getCitiesForCountry } from "@/lib/locations";
+import { COUNTRIES, getCurrencyForCountry } from "@/lib/locations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,17 +22,18 @@ const registerSchema = z.object({
   businessName: z.string().optional(),
   specialty: z.string().optional(),
   shopSlug: z.string().optional(),
-  email: z.string().email("Correo inválido"),
-  phone: z.string().min(7, "Teléfono requerido"),
+  email: z.string().email("Correo invÃ¡lido"),
+  phone: z.string().min(7, "TelÃ©fono requerido"),
   countryCode: z.string().min(2, "País requerido"),
+  currency: z.string().default("USD"),
   city: z.string().min(2, "Ciudad requerida"),
   address: z.string().optional(),
   description: z.string().optional(),
-  password: z.string().min(6, "Mínimo 6 caracteres"),
+  password: z.string().min(6, "MÃ­nimo 6 caracteres"),
   confirmPassword: z.string(),
 })
   .refine((d) => d.password === d.confirmPassword, {
-    message: "Las contraseñas no coinciden",
+    message: "Las contraseÃ±as no coinciden",
     path: ["confirmPassword"],
   })
   .refine((d) => d.accountType !== "barbershop" || Boolean(d.businessName?.trim()), {
@@ -40,7 +41,7 @@ const registerSchema = z.object({
     path: ["businessName"],
   })
   .refine((d) => d.accountType !== "barbershop" || Boolean(d.address?.trim()), {
-    message: "Dirección requerida",
+    message: "DirecciÃ³n requerida",
     path: ["address"],
   });
 
@@ -95,6 +96,7 @@ export default function RegisterPage() {
           email: data.email,
           phone: data.phone,
           countryCode: data.countryCode,
+        currency: getCurrencyForCountry(data.countryCode).currency,
           city: data.city,
           address: data.address || "",
           description: data.description || "",
@@ -123,7 +125,7 @@ export default function RegisterPage() {
         title: "Error al registrarse",
         description:
           msg.includes("Invalid URL") || msg.includes("supabaseUrl")
-            ? "Supabase no está configurado. Agrega las variables en .env.local."
+            ? "Supabase no estÃ¡ configurado. Agrega las variables en .env.local."
             : msg.includes("email") && msg.includes("invalid")
               ? "Usa un correo real. Algunos dominios de prueba no son aceptados."
               : msg,
@@ -136,7 +138,7 @@ export default function RegisterPage() {
     <Card className="w-full max-w-xl">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Crea tu cuenta</CardTitle>
-        <CardDescription>Elige cómo usarás iBarber.</CardDescription>
+        <CardDescription>Elige cÃ³mo usarÃ¡s iBarber.</CardDescription>
       </CardHeader>
 
       <CardContent>
@@ -150,7 +152,7 @@ export default function RegisterPage() {
             >
               <option value="client">Cliente</option>
               <option value="barber">Barbero</option>
-              <option value="barbershop">Barbería</option>
+              <option value="barbershop">BarberÃ­a</option>
             </select>
           </div>
 
@@ -168,11 +170,11 @@ export default function RegisterPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="specialty">Especialidad</Label>
-                <Input id="specialty" placeholder="Fade, barba, diseño..." {...register("specialty")} />
+                <Input id="specialty" placeholder="Fade, barba, diseÃ±o..." {...register("specialty")} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shopSlug">Barbería donde trabajas</Label>
-                <Input id="shopSlug" placeholder="slug de la barbería, opcional" {...register("shopSlug")} />
+                <Label htmlFor="shopSlug">BarberÃ­a donde trabajas</Label>
+                <Input id="shopSlug" placeholder="slug de la barberÃ­a, opcional" {...register("shopSlug")} />
               </div>
             </div>
           )}
@@ -202,7 +204,7 @@ export default function RegisterPage() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Teléfono / WhatsApp *</Label>
+              <Label htmlFor="phone">TelÃ©fono / WhatsApp *</Label>
               <Input id="phone" type="tel" autoComplete="tel" {...register("phone")} />
               {errors.phone && (
                 <p className="text-xs text-destructive">{errors.phone.message}</p>
@@ -212,7 +214,7 @@ export default function RegisterPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="countryCode">País *</Label>
+              <Label htmlFor="countryCode">PaÃ­s *</Label>
               <select
                 id="countryCode"
                 className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm"
@@ -251,7 +253,7 @@ export default function RegisterPage() {
           {accountType === "barbershop" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="address">Dirección *</Label>
+                <Label htmlFor="address">DirecciÃ³n *</Label>
                 <Input id="address" autoComplete="street-address" {...register("address")} />
                 {errors.address && (
                   <p className="text-xs text-destructive">{errors.address.message}</p>
@@ -259,11 +261,11 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
+                <Label htmlFor="description">DescripciÃ³n</Label>
                 <textarea
                   id="description"
                   className="flex min-h-[84px] w-full rounded-xl border border-input bg-background px-4 py-3 text-sm"
-                  placeholder="Especialidad, ambiente, zona o ventajas de tu barbería."
+                  placeholder="Especialidad, ambiente, zona o ventajas de tu barberÃ­a."
                   {...register("description")}
                 />
               </div>
@@ -272,7 +274,7 @@ export default function RegisterPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña *</Label>
+              <Label htmlFor="password">ContraseÃ±a *</Label>
               <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
               {errors.password && (
                 <p className="text-xs text-destructive">{errors.password.message}</p>
@@ -294,7 +296,7 @@ export default function RegisterPage() {
                 Creando cuenta...
               </>
             ) : accountType === "barbershop" ? (
-              "Registrar barbería"
+              "Registrar barberÃ­a"
             ) : accountType === "barber" ? (
               "Crear cuenta de barbero"
             ) : (
@@ -304,9 +306,9 @@ export default function RegisterPage() {
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          ¿Ya tienes cuenta?{" "}
+          Â¿Ya tienes cuenta?{" "}
           <Link href="/login" className="text-primary font-medium hover:underline">
-            Inicia sesión
+            Inicia sesiÃ³n
           </Link>
         </p>
       </CardContent>
