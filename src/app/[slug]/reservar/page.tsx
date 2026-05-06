@@ -6,6 +6,8 @@ import type { AccountRole } from "@/types/database";
 import BookingRoleNotice from "./booking-role-notice";
 import BookingFlow from "./booking-flow";
 
+const APP_BUSINESS_TYPE = "barber";
+
 interface Props {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ barber?: string }>;
@@ -39,6 +41,7 @@ export default async function ReservarPage({ params, searchParams }: Props) {
     .from("shops")
     .select("*, barbers(*, barber_services(service_id)), services(*)")
     .eq("slug", slug)
+    .eq("business_type", APP_BUSINESS_TYPE)
     .eq("services.is_active", true)
     .single();
 
