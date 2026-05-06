@@ -6,6 +6,8 @@ import type { Metadata } from "next";
 import type { AccountRole } from "@/types/database";
 import ShopPublicView from "./shop-public-view";
 
+const APP_BUSINESS_TYPE = "barber";
+
 interface Props {
   params: Promise<{ slug: string }>;
 }
@@ -16,7 +18,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const supabase = await createClient();
   const { data: shop } = await supabase
-    .from("shops").select("name, address").eq("slug", slug).single();
+    .from("shops")
+    .select("name, address")
+    .eq("slug", slug)
+    .eq("business_type", APP_BUSINESS_TYPE)
+    .single();
 
   if (!shop) return { title: "Barbería no encontrada" };
   return {
@@ -44,6 +50,7 @@ export default async function ShopPage({ params }: Props) {
       .from("shops")
       .select("*, barbers(*, barber_services(service_id)), services(*)")
       .eq("slug", slug)
+      .eq("business_type", APP_BUSINESS_TYPE)
       .eq("services.is_active", true)
       .single(),
     supabase.auth.getUser(),
