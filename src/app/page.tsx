@@ -19,6 +19,8 @@ import { IS_DEMO, demoShop } from "@/lib/demo-data";
 import { COUNTRIES, getCitiesForCountry } from "@/lib/locations";
 import { Button } from "@/components/ui/button";
 
+const APP_BUSINESS_TYPE = "barber";
+
 interface Props {
   searchParams: Promise<{ country?: string; city?: string }>;
 }
@@ -50,6 +52,7 @@ export default async function HomePage({ searchParams }: Props) {
     const { data } = await supabase
       .from("shops")
       .select("*")
+      .eq("business_type", APP_BUSINESS_TYPE)
       .order("city", { ascending: true })
       .order("name", { ascending: true })
       .limit(48);
