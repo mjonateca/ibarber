@@ -3,10 +3,12 @@ import { cookies } from "next/headers";
 
 type CookiesToSet = Array<{ name: string; value: string; options?: Record<string, unknown> }>;
 
+const APP_BUSINESS_TYPE = "barber";
+
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -26,6 +28,26 @@ export async function createClient() {
       },
     }
   );
+
+  return new Proxy(supabase, {
+    get(target, prop, receiver) {
+      if (prop !== "from") return Reflect.get(target, prop, receiver);
+
+      return (relation: string) => {
+        const query = target.from(relation);
+        if (relation !== "shops") return query;
+
+        return new Proxy(query, {
+          get(queryTarget, queryProp, queryReceiver) {
+            if (queryProp !== "select") return Reflect.get(queryTarget, queryProp, queryReceiver);
+
+            return (...args: Parameters<typeof queryTarget.select>) =>
+              queryTarget.select(...args).eq("business_type", APP_BUSINESS_TYPE);
+          },
+        });
+      };
+    },
+  }) as typeof supabase;
 }
 
 export async function createAdminClient() {
