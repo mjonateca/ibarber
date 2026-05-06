@@ -15,6 +15,8 @@ import { getCitiesForCountry, getCountryName, getCurrencyForCountry } from "@/li
 import { buildAppUrl } from "@/lib/utils";
 import type { OnboardingData } from "../onboarding-wizard";
 
+const APP_BUSINESS_TYPE = "barber";
+
 const schema = z.object({
   barberName: z.string().min(2, "Nombre requerido"),
   barberBio: z.string().max(200, "Máximo 200 caracteres").optional(),
@@ -70,6 +72,7 @@ export default function StepBarber({ data, onBack, onComplete, userId }: Props) 
           owner_id: userId,
           name: data.shopName!,
           slug: data.slug!,
+          business_type: APP_BUSINESS_TYPE,
           phone: data.phone || null,
           whatsapp: data.phone || null,
           address: data.address || null,
@@ -91,7 +94,7 @@ export default function StepBarber({ data, onBack, onComplete, userId }: Props) 
         .select()
         .single();
 
-      if (shopError && /country_code|country_name|city|description|whatsapp|currency/.test(shopError.message)) {
+      if (shopError && /country_code|country_name|city|description|whatsapp|currency|business_type/.test(shopError.message)) {
         const fallback = await supabase
           .from("shops")
           .insert({
