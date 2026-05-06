@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { slugify } from "@/lib/utils";
 
+const APP_BUSINESS_TYPE = "barber";
+
 const createShopSchema = z.object({
   name: z.string().min(2),
   slug: z.string().min(3).max(50).regex(/^[a-z0-9-]+$/),
@@ -43,7 +45,11 @@ export async function POST(request: Request) {
 
   const { data: shop, error } = await supabase
     .from("shops")
-    .insert({ ...parsed.data, owner_id: user.id })
+    .insert({
+      ...parsed.data,
+      owner_id: user.id,
+      business_type: APP_BUSINESS_TYPE,
+    })
     .select()
     .single();
 
