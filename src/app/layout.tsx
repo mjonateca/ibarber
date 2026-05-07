@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   },
   description: "Reserva citas en barberías de cualquier país, elige servicio y horario en minutos.",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -22,7 +27,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#f97316",
+  themeColor: "#0f766e",
 };
 
 export default function RootLayout({
