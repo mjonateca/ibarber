@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   );
 
   const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-  const fromAddress = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const fromAddress = process.env.RESEND_FROM_EMAIL || "no-reply@i-barber.com";
 
   let sent = 0;
   let failed = 0;
